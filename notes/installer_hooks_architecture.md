@@ -7,7 +7,7 @@
 
 ## Overview
 
-The hooks system allows wrapper classes (like `ChatInstallerEXT`, `POPXInstallerEXT`) to inject family-specific logic into the generic installer's lifecycle operations without modifying `GenericInstallerEXT` itself.
+The hooks system allows wrapper classes to inject family-specific logic into the generic installer's lifecycle operations without modifying `GenericInstallerEXT` itself.
 
 **Design Principle:** Wrapper defines hook methods → Generic installer calls them if they exist → Wrapper logic executes at the right time.
 
@@ -292,10 +292,10 @@ Where `source` is:
 - Preserve ramp parameters, sequence parameters, etc.
 - Handle parameters that the generic copy misses
 
-**Use Cases (miniuv POPX):**
-- Instancer Distribution parameters
+**Use Cases:**
 - Ramp TOP parameters
 - Custom sequence block preservation
+- Family-specific parameter types
 
 **Integration Point:**
 ```python
@@ -323,8 +323,8 @@ self._call_hook('PreserveSpecialParams', new_comp, old_comp)
 - Return set of tags to exclude from batch operations
 - Allows family-specific filtering without modifying generic code
 
-**Use Cases (miniuv POPX):**
-- Exclude `{"Falloff", "Generator", "Modifier", "Tool", "Simulation"}`
+**Use Cases:**
+- Exclude category tags like `{"Generator", "Modifier", "Tool"}`
 - Different exclusions for different batch operations
 
 **Integration Point:**
@@ -414,15 +414,15 @@ def _get_master_for_type(self, op_type, target_parent):
 ### 1. `GetCategoryTags()` - For Operator Type Detection
 When finding an operator's TYPE (e.g., "color_modifier"), we need to skip category tags.
 
-**Example from miniuv's POPX:**
-An operator has tags `["Color Modifier", "Modifier", "POPX"]`
-- "Modifier" and "POPX" are CATEGORY tags
-- "Color Modifier" is the OPERATOR TYPE tag
+**Example:**
+An operator has tags `["Color Tool", "Tool", "MYFAM"]`
+- "Tool" and "MYFAM" are CATEGORY tags
+- "Color Tool" is the OPERATOR TYPE tag
 
 ```python
 def GetCategoryTags(self):
     # Tags that are category/family tags, NOT operator type tags
-    return {"Falloff", "Generator", "Modifier", "Tool", "Simulation", "POPX"}
+    return {"Generator", "Modifier", "Tool", "MYFAM"}
 ```
 
 Used in: `createStub()`, `find_matching_master_op()`, `Createstubs()` type detection
@@ -443,13 +443,13 @@ Used in: `Createstubs()`, `Updateall()`, `Replacestubs()` operator filtering
 ## Example Wrapper Implementation
 
 ```python
-class POPXInstallerEXT(GenericInstallerEXT):
-    """POPX family installer with custom hooks."""
+class MyFamilyInstallerEXT(GenericInstallerEXT):
+    """Example family installer with custom hooks."""
 
     def __init__(self, ownerComp):
         super().__init__(
             ownerComp=ownerComp,
-            family_name='POPX',
+            family_name='MYFAM',
             color=[0.8, 0.2, 0.4, 1],
             compatible_types=['CHOP', 'SOP'],
             operators_folder=ownerComp.par.Operatorsfolder.eval()
@@ -457,32 +457,30 @@ class POPXInstallerEXT(GenericInstallerEXT):
 
     def GetExcludedTags(self):
         """Tags to exclude from batch operations."""
-        return {"Falloff", "Generator", "Modifier", "Tool", "Simulation", "POPX"}
+        return {"Generator", "Modifier", "Tool", "MYFAM"}
 
     def PreStub(self, comp):
-        """Skip stubbing for simulation operators."""
-        if 'Simulation' in comp.tags:
-            print(f"Skipping stub for simulation op: {comp.path}")
+        """Skip stubbing for certain operators."""
+        if 'NoStub' in comp.tags:
+            print(f"Skipping stub for: {comp.path}")
             return False
         return True
 
     def PostStub(self, stub, original_comp):
-        """Store additional POPX-specific data."""
-        # Store instancer state
-        if hasattr(original_comp, 'InstancerState'):
-            stub.store('instancer_state', original_comp.InstancerState)
+        """Store additional family-specific data."""
+        if hasattr(original_comp, 'CustomState'):
+            stub.store('custom_state', original_comp.CustomState)
 
     def PostReplace(self, new_comp, stub):
-        """Restore POPX-specific state from stub."""
-        instancer_state = stub.fetch('instancer_state', None)
-        if instancer_state and hasattr(new_comp, 'InstancerState'):
-            new_comp.InstancerState = instancer_state
+        """Restore family-specific state from stub."""
+        custom_state = stub.fetch('custom_state', None)
+        if custom_state and hasattr(new_comp, 'CustomState'):
+            new_comp.CustomState = custom_state
 
     def PreserveSpecialParams(self, new_comp, old_comp):
-        """Handle Instancer Distribution and ramp parameters."""
-        # Ramp TOP preservation
+        """Handle special parameter types."""
+        # Ramp TOP preservation example
         if hasattr(old_comp.par, 'Rampdat') and hasattr(new_comp.par, 'Rampdat'):
-            # Copy ramp data
             old_ramp = old_comp.par.Rampdat.eval()
             if old_ramp:
                 new_comp.par.Rampdat = old_ramp

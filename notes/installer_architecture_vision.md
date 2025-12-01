@@ -1,7 +1,7 @@
 # Installer Architecture Vision - Checkpoint
 
 **Created:** 2025-11-29
-**Context:** Conversations with Dan (Function Store) and miniuv, plus analysis of current installer code
+**Context:** Analysis of installer patterns and requirements for custom operator families
 
 ---
 
@@ -13,12 +13,12 @@ The `GenericInstallerEXT` should be **completely generic and untouched** by op-f
 
 ## The Anti-Pattern (What NOT to do)
 
-miniuv's `installer_POPX_miniuv.py` hardcoded family-specific logic directly into the generic installer:
+Hardcoding family-specific logic directly into the generic installer:
 
-- **Hardcoded `excluded_tags`**: `{"Falloff", "Generator", "Modifier", "Tool", "Simulation", "POPX"}` - POPX-specific categories
-- **Hardcoded POP compatibility**: Checks for `popsInstalled` and adds POP↔POPX connections
-- **Hardcoded `preserve_special_params`**: Instancer Distribution operators, ramp TOPs - all POPX-specific
-- **Custom tag detection logic**: Uses display names like `"Color Modifier"` → `"color_modifier"` snake_case conversion
+- **Hardcoded `excluded_tags`**: Family-specific category tags baked into the base class
+- **Hardcoded compatibility**: Family-specific connection rules embedded in generic code
+- **Hardcoded `preserve_special_params`**: Family-specific parameter handling in base class
+- **Custom tag detection logic**: Family-specific naming conventions in generic code
 
 This should all live in a wrapper class, not the generic installer.
 
@@ -41,7 +41,7 @@ This should all live in a wrapper class, not the generic installer.
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│         WrapperClass (ChatInstallerEXT, POPXInstaller)       │
+│         WrapperClass (YourFamilyInstallerEXT)                │
 │  ────────────────────────────────────────────────────────── │
 │  • Family-specific hooks: PostPlaceOp, PreStub, etc.         │
 │  • Custom tag handling (excluded_tags, naming conventions)   │
@@ -102,23 +102,12 @@ A special family that's just frequently used ops from any family - like a palett
 
 ## Conversations Reference
 
-### Dan (Function Store) - Key Points:
-- "Can you make an external folder be a repo for your families?"
-- "I'm thinking if there's a way to not load them, just like the palette"
-- "I'd also love it as a 'favorites' family"
-- "Also wonder if we could add COMPs to show up as regular ops for regular families like CHOPs"
-
-### miniuv - Key Points:
-- Interested in folder-based distribution
-- Added stub restoration improvements (connections, sequence params)
-- Has internal ops that need custom restoration logic
-- Needs per-op actions during stub/update (hooks)
-
-### dotsimulate (you) - Key Points:
-- "Folder based would be so much easier"
-- "For updates for LOPs, etc - can just say download this one to the folder and replace"
-- "Ideally the installer can be completely untouched and the API it exposes can allow all custom code to exist in wrapper class"
-- "Better separation and also much less custom code to write"
+### Key Requirements:
+- External folder support for operator distribution
+- Stub restoration with connections and sequence params preserved
+- Per-operator hooks for custom stub/update behavior
+- Favorites family concept - user's personal collection of tools
+- Clean separation between generic installer and family-specific code
 
 ---
 
@@ -744,7 +733,7 @@ def Install(self):
 ```
 
 ### 3. Case-Insensitive Filename Matching
-Filenames like `POPX_v1.0.0.tox` must match lookups for `popx`. Store cache keys lowercase and compare lowercase:
+Filenames like `MyOp_v1.0.0.tox` must match lookups for `myop`. Store cache keys lowercase and compare lowercase:
 ```python
 new_cache[name.lower()] = {...}  # Store lowercase
 if name and name.lower() == lookup_name:  # Compare lowercase

@@ -432,7 +432,7 @@ class MyFamilyInstallerEXT(GenericInstallerEXT):
 def switch_to_simple_mode(installer_op):
     """
     Args:
-        installer_op: The installer COMP (e.g., op.LOP, op.POPX, op.MYFAM)
+        installer_op: The installer COMP (e.g., op.MYFAM)
     """
     # Manipulate settings table directly
     settings = installer_op.op('settings')
@@ -447,8 +447,8 @@ def switch_to_advanced_mode(installer_op):
 # To change group order, reorder columns in group_mapping table
 
 # Usage:
-switch_to_simple_mode(op.LOP)
-switch_to_advanced_mode(op.POPX)
+switch_to_simple_mode(op.MYFAM)
+switch_to_advanced_mode(op.MYFAM)
 ```
 
 ---
