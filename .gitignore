@@ -12,4 +12,11 @@ Thumbs.db
 
 # TouchDesigner
 Backup/
+*.dmp
 *.*.toe
+olib/
+TDImportCache/
+mapping/
+Log/
+Assets/
+clipboard_images/
