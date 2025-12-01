@@ -1,0 +1,216 @@
+# me - this DAT
+# panelValue - the PanelValue object that changed
+# prev - the previous value of the PanelValue object that changed
+# Make sure the corresponding toggle is enabled in the Panel Execute DAT.
+import ctypes
+
+def onOffToOn(panelValue):
+	return
+
+def whileOn(panelValue):
+	return
+
+def onOnToOff(panelValue):
+	return
+
+def whileOff(panelValue):
+	return
+
+def onValueChange(panelValue, prev):
+    if(op('current')[0,0].val != "OPNAME"): return
+    license = op.OPNAME.op('License')
+    if(panelValue == -1): return
+
+    # Use the inject script output (sorted/displayed table) instead of raw OP_fam
+    # The inject script applies sorting from fam_script_callbacks.py
+    family_name = op.OPNAME.par.opshortcut.eval()
+    inject_script = parent.OPCREATE.op(f'nodetable/inject_{family_name}_fam')
+    if not inject_script:
+        # Fallback to raw OP_fam if inject not found
+        inject_script = op.OPNAME.op('OP_fam')
+
+    rows_per_column = parent.OPCREATE.op('nodetable').par.tablerows.eval()
+
+    # Get the valid operator count for this group
+    group_starts = []
+    group_operators = []
+    current_group = -1
+    operator_count = 0
+
+    for i in range(inject_script.numRows):
+        if inject_script[i, 'type'].val.endswith('defLabel'):
+            if current_group >= 0:
+                group_operators.append(operator_count)
+            group_starts.append(i)
+            current_group += 1
+            operator_count = 0
+        elif inject_script[i, 'name'].val:
+            operator_count += 1
+
+    # Handle case where there are no group headers (empty ungrouped_label)
+    if not group_starts:
+        # No group headers - treat all operators as one flat list starting after header row
+        group_starts = [0]  # Virtual start at row 0 (header row)
+        group_operators = [operator_count]
+        has_group_headers = False
+    else:
+        group_operators.append(operator_count)
+        has_group_headers = True
+
+    # Calculate total columns needed for each group
+    columns_per_group = []
+    for i, ops in enumerate(group_operators):
+        # If has group headers and ops is exactly rows_per_column, need 2 columns for header
+        # If no group headers, just calculate based on ops count
+        if has_group_headers and ops == rows_per_column:
+            cols = 2
+        elif has_group_headers:
+            cols = (ops + (rows_per_column - 1)) // rows_per_column
+        else:
+            # No headers - just divide ops by rows
+            cols = (ops + rows_per_column - 1) // rows_per_column if ops > 0 else 1
+        columns_per_group.append(cols)
+
+    # Handle both regular clicks and ENTER key
+    target_index = -1
+    if panelValue == -9999:  # ENTER key
+        destil = parent.OPCREATE.op('nodetable/destil')
+        if destil.numRows > 1:
+            selected_name = destil[1,0].val
+            # Find the selected name in inject_script
+            for i in range(inject_script.numRows):
+                if inject_script[i, 'name'].val == selected_name:
+                    target_index = i
+                    break
+    else:
+        # Original click logic
+        column_number = panelValue // rows_per_column
+
+        # Find which group this column belongs to
+        columns_counted = 0
+        actual_group_index = 0
+        for i, cols in enumerate(columns_per_group):
+            if column_number < columns_counted + cols:
+                actual_group_index = i
+                break
+            columns_counted += cols
+
+        # Calculate position within the found group
+        columns_into_group = column_number - columns_counted
+
+        if has_group_headers:
+            # With group headers: first column has header, subtract 1
+            if columns_into_group == 0:  # First column of group
+                position_in_group = (panelValue % rows_per_column) - 1  # Subtract 1 for header
+            else:  # Overflow column
+                operators_in_previous_columns = rows_per_column - 1
+                position_in_group = operators_in_previous_columns + (panelValue % rows_per_column)
+        else:
+            # No group headers: all positions are operators, no header to subtract
+            position_in_group = panelValue  # Direct index since no headers
+
+        # Validate position is within group's operator count
+        if position_in_group < 0 or position_in_group >= group_operators[actual_group_index]:
+            return
+
+        # Get the actual operator
+        group_start = group_starts[actual_group_index]
+        if has_group_headers:
+            target_index = group_start + 1 + position_in_group  # +1 to skip header row
+        else:
+            target_index = group_start + 1 + position_in_group  # +1 to skip table header (row 0)
+    # Common validation for both click and ENTER
+    if target_index == -1 or target_index >= inject_script.numRows:
+        return
+
+    if not inject_script[target_index, 'name'].val:
+        return
+    display_name = inject_script[target_index, 'name'].val
+    lookup_name = display_name.lower()
+    normalized_name = lookup_name.replace(' ', '_')
+    
+    if hasattr(op.OPNAME, 'PlaceOp'):
+        if not op.OPNAME.PlaceOp(panelValue, lookup_name):
+            parent.OPCREATE.par.winclose.pulse()
+            return
+
+    # Get operator source - supports both embedded and file-based loading
+    source_result = None
+    if hasattr(op.OPNAME, 'Getoperatorsource'):
+        source_result = op.OPNAME.Getoperatorsource(lookup_name)
+
+    clone = None
+    is_file_based = False
+
+    if source_result is None:
+        # Fallback to original embedded-only behavior
+        custom_ops = op.OPNAME.op('custom_operators')
+        if not custom_ops:
+            print(f"Error: Operator '{lookup_name}' not found - no custom_operators and no file source")
+            return
+        masters = custom_ops.findChildren(name=lookup_name, maxDepth=1)
+        if not masters:
+            print(f"Error: Operator '{lookup_name}' not found in custom_operators")
+            return
+        master = masters[0]
+        clone = op.OPNAME.copy(master, name=normalized_name+'1')
+
+    elif source_result[0] == 'file':
+        # Load from external .tox file
+        tox_path = source_result[1]
+        is_file_based = True
+        try:
+            target_parent = ui.panes.current.owner
+            # loadTox loads .tox as child and returns the loaded op
+            clone = target_parent.loadTox(tox_path)
+            # Generate unique name to avoid conflicts
+            base_name = normalized_name
+            counter = 1
+            while target_parent.op(f"{base_name}{counter}"):
+                counter += 1
+            clone.name = f"{base_name}{counter}"
+        except Exception as e:
+            print(f"Error loading .tox file '{tox_path}': {e}")
+            clone = None
+            # Fallback to embedded if file load fails AND custom_operators exists
+            custom_ops_base = op.OPNAME.op('custom_operators')
+            if custom_ops_base:
+                masters = custom_ops_base.findChildren(name=lookup_name, maxDepth=1)
+                if masters:
+                    clone = op.OPNAME.copy(masters[0], name=normalized_name+'1')
+                    is_file_based = False
+
+    elif source_result[0] == 'embedded':
+        # Use embedded operator (normal path)
+        master = source_result[1]
+        clone = op.OPNAME.copy(master, name=normalized_name+'1')
+
+    if clone is None:
+        print(f"Error: Could not create operator '{lookup_name}'")
+        return
+
+    clone.allowCooking = True
+    clone.bypass = False
+
+    # Handle license copying - check clone.family since master may not exist for file-based
+    # Only copy license if the installer has a License op
+    if clone.family == 'COMP' and license:
+        existing_license = clone.op('License')
+        if existing_license:
+            try:
+                existing_content = existing_license.par.Bodytext.eval()
+                current_content = license.par.Bodytext.eval()
+                if existing_content != current_content:
+                    existing_license.destroy()
+                    clone.copy(license)
+            except:
+                existing_license.destroy()
+                clone.copy(license)
+        else:
+            clone.copy(license)
+
+    clone.viewer = ui.preferences['network.viewer']
+    ui.panes.current.placeOPs([clone], inputIndex=0, outputIndex=0)
+    parent.OPCREATE.par.winclose.pulse()
+    if hasattr(op.OPNAME, 'PostPlaceOp'):
+        op.OPNAME.PostPlaceOp(clone)
