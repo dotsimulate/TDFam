@@ -17,17 +17,17 @@ def whileOff(panelValue):
 	return
 
 def onValueChange(panelValue, prev):
-    if(op('current')[0,0].val != "OPNAME"): return
-    license = op.OPNAME.op('License')
+    if(op('current')[0,0].val != "FAV"): return
+    license = op.FAV.op('License')
     if(panelValue == -1): return
 
     # Use the inject script output (sorted/displayed table) instead of raw OP_fam
     # The inject script applies sorting from fam_script_callbacks.py
-    family_name = op.OPNAME.par.opshortcut.eval()
+    family_name = op.FAV.par.opshortcut.eval()
     inject_script = parent.OPCREATE.op(f'nodetable/inject_{family_name}_fam')
     if not inject_script:
         # Fallback to raw OP_fam if inject not found
-        inject_script = op.OPNAME.op('OP_fam')
+        inject_script = op.FAV.op('OP_fam')
 
     rows_per_column = parent.OPCREATE.op('nodetable').par.tablerows.eval()
 
@@ -73,7 +73,7 @@ def onValueChange(panelValue, prev):
 
     # Handle both regular clicks and ENTER key
     target_index = -1
-    if panelValue == -9999:  # ENTER key
+    if panelValue == -8358:  # ENTER key
         destil = parent.OPCREATE.op('nodetable/destil')
         if destil.numRows > 1:
             selected_name = destil[1,0].val
@@ -129,22 +129,22 @@ def onValueChange(panelValue, prev):
     lookup_name = display_name.lower()
     normalized_name = lookup_name.replace(' ', '_')
     
-    if hasattr(op.OPNAME, 'PlaceOp'):
-        if not op.OPNAME.PlaceOp(panelValue, lookup_name):
+    if hasattr(op.FAV, 'PlaceOp'):
+        if not op.FAV.PlaceOp(panelValue, lookup_name):
             parent.OPCREATE.par.winclose.pulse()
             return
 
     # Get operator source - supports both embedded and file-based loading
     source_result = None
-    if hasattr(op.OPNAME, 'Getoperatorsource'):
-        source_result = op.OPNAME.Getoperatorsource(lookup_name)
+    if hasattr(op.FAV, 'Getoperatorsource'):
+        source_result = op.FAV.Getoperatorsource(lookup_name)
 
     clone = None
     is_file_based = False
 
     if source_result is None:
         # Fallback to original embedded-only behavior
-        custom_ops = op.OPNAME.op('custom_operators')
+        custom_ops = op.FAV.op('custom_operators')
         if not custom_ops:
             print(f"Error: Operator '{lookup_name}' not found - no custom_operators and no file source")
             return
@@ -153,7 +153,7 @@ def onValueChange(panelValue, prev):
             print(f"Error: Operator '{lookup_name}' not found in custom_operators")
             return
         master = masters[0]
-        clone = op.OPNAME.copy(master, name=normalized_name+'1')
+        clone = op.FAV.copy(master, name=normalized_name+'1')
 
     elif source_result[0] == 'file':
         # Load from external .tox file
@@ -173,17 +173,17 @@ def onValueChange(panelValue, prev):
             print(f"Error loading .tox file '{tox_path}': {e}")
             clone = None
             # Fallback to embedded if file load fails AND custom_operators exists
-            custom_ops_base = op.OPNAME.op('custom_operators')
+            custom_ops_base = op.FAV.op('custom_operators')
             if custom_ops_base:
                 masters = custom_ops_base.findChildren(name=lookup_name, maxDepth=1)
                 if masters:
-                    clone = op.OPNAME.copy(masters[0], name=normalized_name+'1')
+                    clone = op.FAV.copy(masters[0], name=normalized_name+'1')
                     is_file_based = False
 
     elif source_result[0] == 'embedded':
         # Use embedded operator (normal path)
         master = source_result[1]
-        clone = op.OPNAME.copy(master, name=normalized_name+'1')
+        clone = op.FAV.copy(master, name=normalized_name+'1')
 
     if clone is None:
         print(f"Error: Could not create operator '{lookup_name}'")
@@ -212,5 +212,5 @@ def onValueChange(panelValue, prev):
     clone.viewer = ui.preferences['network.viewer']
     ui.panes.current.placeOPs([clone], inputIndex=0, outputIndex=0)
     parent.OPCREATE.par.winclose.pulse()
-    if hasattr(op.OPNAME, 'PostPlaceOp'):
-        op.OPNAME.PostPlaceOp(clone)
+    if hasattr(op.FAV, 'PostPlaceOp'):
+        op.FAV.PostPlaceOp(clone)
