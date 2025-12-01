@@ -17,6 +17,4 @@ Backup/
 olib/
 TDImportCache/
 mapping/
-Log/
-Assets/
-clipboard_images/
+CrashAutoSave.*
