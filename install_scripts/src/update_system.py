@@ -49,11 +49,11 @@ class UpdateManager:
         Returns:
             tuple: (master_op, match_method) or (None, 'none')
         """
-        operators_folder = self.ownerComp.op('custom_operators')
+        operators_folder = self.installer.operators_comp
         if not operators_folder:
             return (None, 'none')
 
-        category_tags = self._call_hook('GetCategoryTags') or set()
+        category_tags = self._call_hook('_GetCategoryTags') or set()
 
         # Try matching by type tag
         if has_operator_type_tag(comp, self.family_name, category_tags):
@@ -142,16 +142,16 @@ class UpdateManager:
         Returns:
             tuple: (success, message)
         """
-        operators_folder = self.ownerComp.op('custom_operators')
+        operators_folder = self.installer.operators_comp
         if not operators_folder:
-            return (False, "Error: 'custom_operators' folder not found")
+            return (False, "Error: operators_comp not set")
 
         master_comp, match_method = self.find_matching_master(old_comp)
         if not master_comp:
             return (False, f"Couldn't update {old_comp.path}, no matching master found")
 
         # Hook: PreUpdate
-        if self._call_hook('PreUpdate', old_comp, master_comp) is False:
+        if self._call_hook('_PreUpdate', old_comp, master_comp) is False:
             return (False, f"Update cancelled by PreUpdate hook for {old_comp.path}")
 
         try:
@@ -181,7 +181,7 @@ class UpdateManager:
                     self.copy_par(p, old_pars[0])
 
             # Hook: PreserveSpecialParams
-            self._call_hook('PreserveSpecialParams', new_comp, old_comp)
+            self._call_hook('_PreserveSpecialParams', new_comp, old_comp)
 
             # Restore connections
             for i in range(min(len(new_comp.inputConnectors), len(old_comp.inputConnectors))):
@@ -204,7 +204,7 @@ class UpdateManager:
             new_comp.name = old_name
 
             # Hook: PostUpdate
-            self._call_hook('PostUpdate', new_comp)
+            self._call_hook('_PostUpdate', new_comp)
 
             return (True, f"Updated {new_comp.path} (matched via {match_method})")
 
@@ -221,7 +221,7 @@ class UpdateManager:
         Returns:
             list: Family operators (excluding installer)
         """
-        excluded_tags = self._call_hook('GetExcludedTags') or set()
+        excluded_tags = self._call_hook('_GetExcludedTags') or set()
 
         search_root = network or op('/')
         depth = 1 if network else None
@@ -247,8 +247,8 @@ class UpdateManager:
         Returns:
             dict: Analysis results
         """
-        operators_folder = self.ownerComp.op('custom_operators')
-        category_tags = self._call_hook('GetCategoryTags') or set()
+        operators_folder = self.installer.operators_comp
+        category_tags = self._call_hook('_GetCategoryTags') or set()
 
         results = {
             'with_type_tags': [],

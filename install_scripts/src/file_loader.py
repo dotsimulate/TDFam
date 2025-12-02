@@ -135,8 +135,8 @@ class FileLoader:
         Returns:
             tuple: ('embedded', op) or ('file', path) or None
         """
-        # Find embedded operator
-        custom_ops = self.ownerComp.op('custom_operators')
+        # Find embedded operator from operators_comp
+        custom_ops = self.installer.operators_comp
         embedded_ops = custom_ops.findChildren(name=lookup_name, maxDepth=1) if custom_ops else []
         embedded = embedded_ops[0] if embedded_ops else None
 

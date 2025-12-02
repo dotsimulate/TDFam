@@ -57,12 +57,12 @@ class StubManager:
             The stub component, or None if skipped
         """
         # Hook: PreStub - can return False to skip
-        if self._call_hook('PreStub', comp) is False:
+        if self._call_hook('_PreStub', comp) is False:
             print(f"createStub: Skipped {comp.path} by PreStub hook")
             return None
 
         name = comp.name
-        category_tags = self._call_hook('GetCategoryTags') or set()
+        category_tags = self._call_hook('_GetCategoryTags') or set()
         op_type = get_operator_type(comp, self.family_name, category_tags)
 
         print(f"createStub: Creating stub for {comp.path} with type '{op_type}'")
@@ -119,7 +119,7 @@ class StubManager:
         copy.store('params', params)
 
         # Hook: PostStub
-        self._call_hook('PostStub', copy, comp)
+        self._call_hook('_PostStub', copy, comp)
 
         return copy
 
@@ -208,7 +208,7 @@ class StubManager:
             The new full component, or None if failed
         """
         # Hook: PreReplace
-        if self._call_hook('PreReplace', stub) is False:
+        if self._call_hook('_PreReplace', stub) is False:
             print(f"replaceStub: Skipped {stub.path} by PreReplace hook")
             return None
 
@@ -251,7 +251,7 @@ class StubManager:
         self._restore_params(new_comp, params)
 
         # Hook: PreserveSpecialParams
-        self._call_hook('PreserveSpecialParams', new_comp, params)
+        self._call_hook('_PreserveSpecialParams', new_comp, params)
 
         # Restore connections
         self._restore_connections(new_comp, stub)
@@ -261,7 +261,7 @@ class StubManager:
         new_comp.bypass = stub.fetch('bypass', False)
 
         # Hook: PostReplace
-        self._call_hook('PostReplace', new_comp, stub)
+        self._call_hook('_PostReplace', new_comp, stub)
 
         # Remove stub
         stub.destroy()
@@ -342,7 +342,7 @@ class StubManager:
         Returns:
             list: Family operators (excluding installer and stubs)
         """
-        excluded_tags = self._call_hook('GetExcludedTags') or set()
+        excluded_tags = self._call_hook('_GetExcludedTags') or set()
 
         search_root = network or op('/')
         depth = 1 if network else None
@@ -369,7 +369,7 @@ class StubManager:
         Returns:
             list: Stub operators
         """
-        excluded_tags = self._call_hook('GetExcludedTags') or set()
+        excluded_tags = self._call_hook('_GetExcludedTags') or set()
         excluded_lower = {t.lower() for t in excluded_tags}
 
         search_root = network or op('/')

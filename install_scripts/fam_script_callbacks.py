@@ -26,7 +26,12 @@ def cook(scriptOp):
         scriptOp.clear()
         return
     currFamily = scriptOp.inputs[0][0,0].val
-    our_family = parent(2).par.opshortcut.eval()
+
+    # Get installer from callbacks parameter - callbacks points to this DAT,
+    # and this DAT's parent is the installer (install_scripts)
+    callbacks_dat = scriptOp.par.callbacks.eval()
+    installer = callbacks_dat.parent() if callbacks_dat else None
+    our_family = installer.par.opshortcut.eval() if installer else ''
 
     # Find the original families operator and nodetable
     families_op = op('/ui/dialogs/menu_op/nodetable/families')
@@ -53,7 +58,7 @@ def cook(scriptOp):
     if families_op:
         families_op.bypass = True
 
-    familyOps = parent(2).op('OP_fam')
+    familyOps = installer.op('OP_fam') if installer else None
     if not familyOps or familyOps.numRows < 2 or familyOps.numCols == 0:
         scriptOp.copy(scriptOp.inputs[0])
         return
@@ -98,7 +103,7 @@ def cook(scriptOp):
 
     for family in allFamilies:
         if family == our_family:  # Replace the hardcoded LOP check
-            familyOps = parent(2).op('OP_fam')
+            familyOps = installer.op('OP_fam')
 
             # Guard: check OP_fam has proper structure before processing
             if not familyOps or familyOps.numRows < 2 or familyOps.numCols == 0:
@@ -108,12 +113,12 @@ def cook(scriptOp):
             if 'name' not in [familyOps[0, c].val for c in range(familyOps.numCols)]:
                 continue
             
-            group_table = parent(2).op('group_mapping')
+            group_table = installer.parent().op('group_mapping')
             # print(f"\nGroup mapping table contents:")
             # print(group_table.text)
             
             # Set up OS compatibility and exclude table
-            os_table = parent(2).op('os_incompatible')
+            os_table = installer.parent().op('os_incompatible')
             os_values = {}
             exclude_values = {}
             if os_table:
@@ -134,7 +139,7 @@ def cook(scriptOp):
                         exclude_values[op_name] = exclude_flag
 
             # Get exclude_behavior, show_ungrouped, and ungrouped_label from settings
-            settings = parent(2).op('settings')
+            settings = installer.parent().op('settings')
             exclude_behavior = settings['exclude_behavior', 1].val if settings and settings.row('exclude_behavior') else 'hide'
             show_ungrouped = settings['show_ungrouped', 1].val if settings and settings.row('show_ungrouped') else '1'
             ungrouped_label = settings['ungrouped_label', 1].val if settings and settings.row('ungrouped_label') else 'Other'

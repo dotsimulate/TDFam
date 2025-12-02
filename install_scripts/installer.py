@@ -44,7 +44,7 @@ class OpFamCreateExt:
 
     def __init__(self, ownerComp, family_name, color,
                  compatible_types=None, connection_map=None,
-                 operators_folder=None, dynamic_refresh=False,
+                 operators_comp=None, operators_folder=None, dynamic_refresh=False,
                  install_location=None, node_x=0, node_y=0, expose=True):
         """
         Initialize the operator family installer.
@@ -55,6 +55,7 @@ class OpFamCreateExt:
             color: Family color as [r, g, b] or [r, g, b, a]
             compatible_types: List of compatible TD families (e.g., ['COMP', 'TOP'])
             connection_map: Dict mapping (from_family, to_family) -> connector type
+            operators_comp: COMP containing embedded operators (optional)
             operators_folder: Path to external .tox folder (optional)
             dynamic_refresh: If True, scan folder on every placement
             install_location: Target parent for installer. Defaults to op('/')
@@ -77,7 +78,8 @@ class OpFamCreateExt:
         self.node_y = node_y
         self.expose = expose
 
-        # File-based loading config
+        # Operator sources
+        self.operators_comp = operators_comp
         self.operators_folder = operators_folder
         self.dynamic_refresh = dynamic_refresh
 
@@ -104,19 +106,17 @@ class OpFamCreateExt:
 
     def _initialize_installer(self):
         """Initialize installer position and check for duplicates."""
-        self.ownerComp.par.opshortcut = ''
-
-        if hasattr(op, self.FamilyName.val):
-            ui.messageBox(self.FamilyName.val, f"{self.FamilyName.val} exists already!")
-            run("args[0].selfDestroy()", self, endFrame=True, delayRef=op.TDResources)
+        # Check if global shortcut already exists and points to ANOTHER component
+        existing = getattr(op, self.FamilyName.val, None)
+        if existing is not None and existing != self.ownerComp:
+            ui.messageBox(self.FamilyName.val,
+                f"{self.FamilyName.val} already exists at {existing.path}!\n\nDisabling this installer.")
+            # Turn off Install parameter instead of destroying
+            if hasattr(self.ownerComp.par, 'Install'):
+                self.ownerComp.par.Install = False
             return
 
-        if self.ownerComp.parent() != self.install_location:
-            newInstaller = self.install_location.copy(self.ownerComp)
-            newInstaller.cook(force=True)
-            run("args[0].selfDestroy()", self, endFrame=True, delayRef=op.TDResources)
-            return
-
+        # Set up this installer
         self.ownerComp.expose = self.expose
         self.ownerComp.nodeX = self.node_x
         self.ownerComp.nodeY = self.node_y
@@ -132,16 +132,32 @@ class OpFamCreateExt:
 
     def Install(self):
         """Install the operator family into TouchDesigner's UI."""
+        self._call_hook('_PreInstall')
         self.last_install_time = time.time()
 
         if self.operators_folder:
             self.file_loader.refresh_cache(self.operators_folder)
 
         self.ui.install()
+        self._call_hook('_PostInstall')
 
     def Uninstall(self):
         """Uninstall the operator family from TouchDesigner's UI."""
+        self._call_hook('_PreUninstall')
         self.ui.uninstall()
+        self._call_hook('_PostUninstall')
+
+    def TagOperators(self, pattern='suffix'):
+        """
+        Tag all operators in custom_operators with family and type tags.
+
+        Args:
+            pattern: Tag pattern for type tags:
+                     'suffix' - {opname}{Family} (e.g., agentLOP)
+                     'name' - just operator name as tag
+        """
+        tag_operators = mod('src/tag_helpers').tag_operators
+        tag_operators(self, pattern)
 
     def selfDestroy(self):
         """Destroy the installer component."""
@@ -217,7 +233,7 @@ class OpFamCreateExt:
 
         # Check for missing type tags
         has_operator_type_tag = mod('src/tag_helpers').has_operator_type_tag
-        category_tags = self._call_hook('GetCategoryTags') or set()
+        category_tags = self._call_hook('_GetCategoryTags') or set()
         ops_without_tags = [
             c for c in operators
             if not has_operator_type_tag(c, self.FamilyName.val, category_tags)
@@ -322,6 +338,22 @@ class OpFamCreateExt:
         ui.messageBox('Update Complete', summary, buttons=["OK"])
 
     # ==================== Hooks ====================
+
+    def CallHook(self, hook_name, *args):
+        """
+        Public method for external code to trigger hooks.
+
+        Args:
+            hook_name: Name of the hook (e.g., '_PlaceOp')
+            *args: Arguments to pass to the hook
+
+        Returns:
+            Hook return value, or 'nohook' if hook not defined
+        """
+        hook = getattr(self, hook_name, None)
+        if hook and callable(hook):
+            return hook(*args)
+        return 'nohook'
 
     def _call_hook(self, hook_name, *args):
         """

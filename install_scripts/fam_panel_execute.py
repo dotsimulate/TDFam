@@ -151,15 +151,16 @@ def onValueChange(panelValue, prev):
     # PlaceOp hook - can return:
     #   True  = proceed with placement
     #   False = cancel and close menu
-    #   None  = cancel but keep menu open (for action operators like theme switchers)
-    if hasattr(installer, 'PlaceOp'):
-        result = installer.PlaceOp(panelValue, lookup_name)
-        if result is None:
-            # Action operator - don't place, keep menu open
-            return
-        if not result:
-            parent.OPCREATE.par.winclose.pulse()
-            return
+    #   None  = cancel but keep menu open (ActionOp)
+    #   'nohook' = no hook defined, proceed with placement
+    result = installer.CallHook('_PlaceOp', panelValue, lookup_name)
+    if result is False:
+        parent.OPCREATE.par.winclose.pulse()
+        return
+    if result is None:
+        # ActionOp - don't place, keep menu open
+        return
+    # result is True or 'nohook' - proceed with placement
 
     # Get operator source - supports both embedded and file-based loading
     source_result = None
@@ -171,9 +172,9 @@ def onValueChange(panelValue, prev):
 
     if source_result is None:
         # Fallback to original embedded-only behavior
-        custom_ops = installer.op('custom_operators')
+        custom_ops = installer.operators_comp
         if not custom_ops:
-            print(f"Error: Operator '{lookup_name}' not found - no custom_operators and no file source")
+            print(f"Error: Operator '{lookup_name}' not found - no operators_comp and no file source")
             return
         masters = custom_ops.findChildren(name=lookup_name, maxDepth=1)
         if not masters:
@@ -199,8 +200,8 @@ def onValueChange(panelValue, prev):
         except Exception as e:
             print(f"Error loading .tox file '{tox_path}': {e}")
             clone = None
-            # Fallback to embedded if file load fails AND custom_operators exists
-            custom_ops_base = installer.op('custom_operators')
+            # Fallback to embedded if file load fails AND operators_comp exists
+            custom_ops_base = installer.operators_comp
             if custom_ops_base:
                 masters = custom_ops_base.findChildren(name=lookup_name, maxDepth=1)
                 if masters:
@@ -239,5 +240,4 @@ def onValueChange(panelValue, prev):
     clone.viewer = ui.preferences['network.viewer']
     ui.panes.current.placeOPs([clone], inputIndex=0, outputIndex=0)
     parent.OPCREATE.par.winclose.pulse()
-    if hasattr(installer, 'PostPlaceOp'):
-        installer.PostPlaceOp(clone)
+    installer.CallHook('_PostPlaceOp', clone)

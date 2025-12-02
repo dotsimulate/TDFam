@@ -199,7 +199,7 @@ class UIInjector:
             return
 
         # Update toggle template text
-        toggle_template = self.ownerComp.op('install_scripts/fam_toggle')
+        toggle_template = self.ownerComp.op('fam_toggle')
         if toggle_template:
             text_op = toggle_template.op('button/text1')
             if text_op:
@@ -268,14 +268,13 @@ class UIInjector:
 
     def _setup_last_node_type(self, menuOp):
         """Create/update set_last_node_type script."""
-        if not menuOp.op('set_last_node_type'):
-            template = self.ownerComp.op('install_scripts/set_last_node_type')
+        setLastNodeType = menuOp.op('set_last_node_type')
+        if not setLastNodeType:
+            template = self.ownerComp.op('set_last_node_type')
             if template:
                 setLastNodeType = menuOp.copy(template)
                 setLastNodeType.nodeX = menuOp.op('launch_menu_op').nodeX - 200
                 setLastNodeType.nodeY = menuOp.op('launch_menu_op').nodeY
-        else:
-            setLastNodeType = menuOp.op('set_last_node_type')
 
         # Update script content
         compatible_check = ' or '.join([f"menu_type=='{t}'" for t in self.compatible_types])
@@ -352,7 +351,7 @@ elif(source == 'input' and ({compatible_check})):
 
         original_input = families_op.inputs[0] if families_op.inputs else None
         inject_op = nodeTable.copy(families_op, name=inject_op_name, includeDocked=True)
-        inject_op.par.callbacks.expr = f"op.{self.family_name}.op('install_scripts/fam_script_callbacks')"
+        inject_op.par.callbacks.expr = f"op.{self.family_name}.op('fam_script_callbacks')"
         inject_op.nodeX = families_op.nodeX + 150
         inject_op.nodeY = families_op.nodeY
 
@@ -437,7 +436,7 @@ elif(source == 'input' and ({compatible_check})):
         if menuOp.op(panel_execute_path):
             return
 
-        source = self.ownerComp.op('install_scripts/fam_panel_execute')
+        source = self.ownerComp.op('fam_panel_execute')
         if not source:
             return
 
@@ -534,11 +533,11 @@ elif(source == 'input' and ({compatible_check})):
         # Update installer child colors
         self._set_child_colors()
 
-        # Update custom_operators and ownerComp colors
+        # Update operators_comp and ownerComp colors
         color_val = list(new_color) if new_color else [0.5, 0.5, 0.5]
         color_tuple = (color_val[0], color_val[1], color_val[2])
 
-        custom_ops = self.ownerComp.op('custom_operators')
+        custom_ops = self.installer.operators_comp
         if custom_ops:
             for comp in custom_ops.findChildren(type=COMP, maxDepth=1):
                 comp.color = color_tuple

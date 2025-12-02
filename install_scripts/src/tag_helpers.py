@@ -8,14 +8,14 @@ for the stub/update/placement systems to work correctly.
 
 def ensure_family_tags(installer, custom_ops_base=None):
     """
-    Ensure all operators in custom_operators have the family tag.
+    Ensure all operators in operators_comp have the family tag.
 
     Args:
         installer: The OpFamCreateExt instance
         custom_ops_base: Optional custom operators base.
-                         Defaults to installer.ownerComp.op('custom_operators')
+                         Defaults to installer.operators_comp
     """
-    custom_ops = custom_ops_base or installer.ownerComp.op('custom_operators')
+    custom_ops = custom_ops_base or installer.operators_comp
     if not custom_ops:
         return
 
@@ -36,7 +36,7 @@ def ensure_type_tags(installer, custom_ops_base=None, pattern='suffix'):
                  'suffix' - {opname}{Family} (e.g., agentLOP)
                  'name' - just operator name as tag - simpler style
     """
-    custom_ops = custom_ops_base or installer.ownerComp.op('custom_operators')
+    custom_ops = custom_ops_base or installer.operators_comp
     if not custom_ops:
         return
 

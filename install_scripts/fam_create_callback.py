@@ -29,11 +29,21 @@ def setup_table_dat(dat_name):
     return table_dat
 
 def onCook(scriptOp):
-    # Get family name from installer extension attribute (promoted tdu.Dependency)
-    installer_comp = parent(2)
+    # DEBUG - track what's happening
+    debug("=== fam_create_callback onCook ===")
+    debug(f"parent() = {parent()}")
+    debug(f"parent().path = {parent().path}")
+    debug(f"parent(2) = {parent(2)}")
+    debug(f"parent(2).path = {parent(2).path}")
 
-    # Access promoted FamilyName attribute (capitalized for promotion)
+    # Get family name from installer extension attribute (promoted tdu.Dependency)
+    # Try parent(1) first (new structure: extension on install_scripts)
+    # Fall back to parent(2) (old structure: extension on grandparent)
+    installer_comp = parent()
+    debug(f"installer_comp = {installer_comp}")
     fam_name = None
+
+    # Try to get FamilyName from parent(1) first
     try:
         fam_dep = installer_comp.FamilyName
         if hasattr(fam_dep, 'val'):
@@ -47,7 +57,9 @@ def onCook(scriptOp):
         # This happens when OP_fam cooks during __init__ - just skip, will recook later
         pass
 
+    debug(f"fam_name = {fam_name}")
     if not fam_name:
+        debug("fam_name is None/empty - returning early")
         return
     scriptOp.clear()
     scriptOp.appendRow(['name','label','type','subtype','mininputs','maxinputs','ordering','level','lictype','os','score','family','opType'])
@@ -82,20 +94,35 @@ def onCook(scriptOp):
             label_index[int(row[0].val)] = row[1].val
     replace_index = {row[0].val: row[1].val for row in replace_table.rows() if row[0].val}
 
-    # Get embedded operators (if custom_operators base exists)
-    custom_operators_base = op('../custom_operators')
+    # Get embedded operators from Opcomp parameter
+    parent_comp = installer_comp.parent()
+    debug(f"parent_comp = {parent_comp}")
+
+    # Use Opcomp parameter if available
+    custom_operators_base = None
+    if hasattr(installer_comp.par, 'Opcomp'):
+        custom_operators_base = installer_comp.par.Opcomp.eval()
+        debug(f"installer_comp.par.Opcomp = {custom_operators_base}")
+
     if custom_operators_base:
+        debug(f"custom_operators_base.path = {custom_operators_base.path}")
         embedded_ops = custom_operators_base.findChildren(tags=[fam_name], maxDepth=1)
+        debug(f"Found {len(embedded_ops)} embedded ops with tag '{fam_name}'")
+        for op_item in embedded_ops:
+            debug(f"  - {op_item.name} tags={op_item.tags}")
         embedded_names = {o.name.lower() for o in embedded_ops}
     else:
+        debug("custom_operators_base is None!")
         embedded_ops = []
         embedded_names = set()
 
     # Get folder-based operators (from cache)
     folder_ops = []
 
-    # Get settings from settings table
-    settings = installer_comp.op('settings')
+    # Get settings from settings table (in parent_comp / example_ops level)
+    settings = parent_comp.op('settings')
+    if not settings:
+        settings = installer_comp.op('settings')
     ungrouped_label = settings['ungrouped_label', 1].val if settings and settings.row('ungrouped_label') else 'Other'
     exclude_behavior = settings['exclude_behavior', 1].val if settings and settings.row('exclude_behavior') else 'hide'
     show_ungrouped = settings['show_ungrouped', 1].val if settings and settings.row('show_ungrouped') else '1'
@@ -116,9 +143,10 @@ def onCook(scriptOp):
 
     # Combine and sort
     ops = list(embedded_ops) + folder_ops
+    debug(f"Total ops (embedded + folder): {len(ops)}")
     ops = sorted(ops, key=lambda o: (group_index.get(o.name.lower(), 'ZZZ'), o.name))
 
-    generators_comp = op('../custom_operators/generators')
+    generators_comp = custom_operators_base.op('generators') if custom_operators_base else None
     generators = generators_comp.enclosedOPs if generators_comp else []
     types = [f'layouts/{fam_name}/defFilter', f'layouts/{fam_name}/defGenerator']
     
