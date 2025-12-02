@@ -28,10 +28,16 @@ class FileLoader:
         """
         self.installer = installer
         self.ownerComp = installer.ownerComp
-        self.family_name = installer.FamilyName.val
 
-        # Folder cache as tdu.Dependency for reactive updates
-        self.cache = tdu.Dependency({})
+    @property
+    def family_name(self):
+        """Get family name from Properties registry."""
+        return self.installer.Properties['family_name']
+
+    @property
+    def cache(self):
+        """Get folder cache dependency from Properties registry."""
+        return self.installer.Properties.getDependency('folder_cache')
 
     def refresh_cache(self, operators_folder):
         """
@@ -45,7 +51,7 @@ class FileLoader:
         new_cache = {}
 
         if not operators_folder or not os.path.isdir(operators_folder):
-            self.cache.val = new_cache
+            self.installer.Properties['folder_cache'] = new_cache
             return
 
         for item in os.listdir(operators_folder):
@@ -75,7 +81,7 @@ class FileLoader:
                     }
 
         print(f"{self.family_name}: Folder cache refreshed - {len(new_cache)} operators found")
-        self.cache.val = new_cache
+        self.installer.Properties['folder_cache'] = new_cache
 
     def _parse_tox_info(self, filename):
         """
@@ -156,8 +162,8 @@ class FileLoader:
                         }
                         break
         else:
-            # Use cache
-            folder_cache = self.cache.val
+            # Use cache from Properties
+            folder_cache = self.installer.Properties['folder_cache']
             if folder_cache:
                 external_info = folder_cache.get(lookup_name)
 

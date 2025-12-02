@@ -15,11 +15,11 @@ def ensure_family_tags(installer, custom_ops_base=None):
         custom_ops_base: Optional custom operators base.
                          Defaults to installer.operators_comp
     """
-    custom_ops = custom_ops_base or installer.operators_comp
+    custom_ops = custom_ops_base or installer.Properties['operators_comp']
     if not custom_ops:
         return
 
-    family = installer.FamilyName.val
+    family = installer.Properties['family_name']
     for comp in custom_ops.findChildren(type=COMP, maxDepth=1):
         if family not in comp.tags:
             comp.tags.add(family)
@@ -36,11 +36,11 @@ def ensure_type_tags(installer, custom_ops_base=None, pattern='suffix'):
                  'suffix' - {opname}{Family} (e.g., agentLOP)
                  'name' - just operator name as tag - simpler style
     """
-    custom_ops = custom_ops_base or installer.operators_comp
+    custom_ops = custom_ops_base or installer.Properties['operators_comp']
     if not custom_ops:
         return
 
-    family = installer.FamilyName.val
+    family = installer.Properties['family_name']
     for comp in custom_ops.findChildren(type=COMP, maxDepth=1):
         if pattern == 'suffix':
             type_tag = f"{comp.name}{family}"

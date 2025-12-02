@@ -65,78 +65,56 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
             # Initialize ChainedCallbacksExt (provides callback system)
             ChainedCallbacksExt.__init__(self, self._installer)
 
-            # Initialize OpFamCreateExt (provides core installer logic)
-            # install_location=parent keeps installer in place (doesn't copy to root)
+            # Initialize OpFamCreateExt with minimal defaults
+            # _sync_parameters() will update Properties from actual parameters
             OpFamCreateExt.__init__(
                 self,
                 ownerComp=self._installer,
                 family_name=self._installer.par.Family.eval(),
-                color=self._get_color_from_pars(),
-                compatible_types=self._get_compatible_types(),
-                operators_comp=self._get_operators_comp(),
-                operators_folder=self._get_operators_folder(),
-                dynamic_refresh=self._get_dynamic_refresh(),
+                color=[0.5, 0.5, 0.5],  # Placeholder, updated by _sync_parameters
                 install_location=self._installer.parent()
             )
 
-            # Store index separately (not part of base class)
-            self.index = self._get_index()
+            # Sync all parameters to Properties registry (the real initialization)
+            self._sync_parameters()
 
             # Auto-tag operators in custom_operators
             self.TagOperators()
 
-    def _get_color_from_pars(self):
-        """Get color from Color parameter (rgb)."""
+    def _sync_parameters(self):
+        """Read parameters and update Properties registry."""
         inst = self._installer
+
+        # Family page
+        if hasattr(inst.par, 'Family'):
+            self.Properties['family_name'] = inst.par.Family.eval()
         if hasattr(inst.par, 'Colorr'):
-            # Color parameter with r/g/b components
-            return [
+            self.Properties['color'] = [
                 inst.par.Colorr.eval(),
                 inst.par.Colorg.eval(),
                 inst.par.Colorb.eval()
             ]
-        return [0.5, 0.5, 0.5]
-
-    def _get_index(self):
-        """Get menu index from Index parameter."""
-        inst = self._installer
         if hasattr(inst.par, 'Index'):
-            return int(inst.par.Index.eval())
-        return 0
-
-    def _get_compatible_types(self):
-        """Get compatible types from parameter or default."""
-        inst = self._installer
+            self.Properties['index'] = int(inst.par.Index.eval())
+        if hasattr(inst.par, 'Opcomp'):
+            self.Properties['operators_comp'] = inst.par.Opcomp.eval()
+        if hasattr(inst.par, 'Opfolder'):
+            self.Properties['operators_folder'] = inst.par.Opfolder.eval()
+        if hasattr(inst.par, 'Dynamicrefresh'):
+            self.Properties['dynamic_refresh'] = bool(inst.par.Dynamicrefresh.eval())
         if hasattr(inst.par, 'Compatibletypes') and inst.par.Compatibletypes.eval():
             types_str = inst.par.Compatibletypes.eval()
-            return [t.strip() for t in types_str.split(',') if t.strip()]
-        return ['COMP', 'TOP', 'CHOP', 'SOP', 'DAT', 'MAT']
+            self.Properties['compatible_types'] = [t.strip() for t in types_str.split(',') if t.strip()]
 
-    def _get_operators_comp(self):
-        """Get operators COMP from Opcomp parameter."""
-        inst = self._installer
-        if hasattr(inst.par, 'Opcomp'):
-            comp = inst.par.Opcomp.eval()
-            if comp:
-                return comp
-        return None
+    @property
+    def index(self):
+        """Get menu index from Properties registry."""
+        return self.Properties['index']
 
-    def _get_operators_folder(self):
-        """Get operators folder path from Opfolder parameter."""
-        inst = self._installer
-        if hasattr(inst.par, 'Opfolder'):
-            path = inst.par.Opfolder.eval()
-            if path:
-                import os
-                return path if os.path.isdir(path) else None
-        return None
-
-    def _get_dynamic_refresh(self):
-        """Get dynamic refresh setting from parameter."""
-        inst = self._installer
-        if hasattr(inst.par, 'Dynamicrefresh'):
-            return bool(inst.par.Dynamicrefresh.eval())
-        return False
+    @index.setter
+    def index(self, value):
+        """Set menu index in Properties registry."""
+        self.Properties['index'] = int(value)
 
     # ==================== Hook Integration (private) ====================
 
@@ -252,12 +230,17 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
             g = self._installer.par.Colorg.eval()
         if b is None:
             b = self._installer.par.Colorb.eval()
+
+        # Update registry - this triggers all dependent expressions
+        self.Properties['color'] = [r, g, b]
+
+        # Also update parameters
         self._installer.par.Colorr = r
         self._installer.par.Colorg = g
         self._installer.par.Colorb = b
-        self.color = [r, g, b]
+
         if hasattr(self, 'ui') and self.ui:
-            self.ui.update_family_color(self.color)
+            self.ui.update_family_color(self.Properties['color'])
 
     # --- Stub for single operator ---
 

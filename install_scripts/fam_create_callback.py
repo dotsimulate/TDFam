@@ -29,37 +29,18 @@ def setup_table_dat(dat_name):
     return table_dat
 
 def onCook(scriptOp):
-    # DEBUG - track what's happening
-    debug("=== fam_create_callback onCook ===")
-    debug(f"parent() = {parent()}")
-    debug(f"parent().path = {parent().path}")
-    debug(f"parent(2) = {parent(2)}")
-    debug(f"parent(2).path = {parent(2).path}")
-
-    # Get family name from installer extension attribute (promoted tdu.Dependency)
-    # Try parent(1) first (new structure: extension on install_scripts)
-    # Fall back to parent(2) (old structure: extension on grandparent)
+    # Get family name from installer Properties registry
     installer_comp = parent()
-    debug(f"installer_comp = {installer_comp}")
     fam_name = None
 
-    # Try to get FamilyName from parent(1) first
     try:
-        fam_dep = installer_comp.FamilyName
-        if hasattr(fam_dep, 'val'):
-            fam_name = fam_dep.val
-        else:
-            fam_name = fam_dep
-    except AttributeError:
-        pass
+        fam_name = installer_comp.Properties['family_name']
     except Exception as e:
         # Catches "Cannot use an extension during its initialization"
         # This happens when OP_fam cooks during __init__ - just skip, will recook later
         pass
 
-    debug(f"fam_name = {fam_name}")
     if not fam_name:
-        debug("fam_name is None/empty - returning early")
         return
     scriptOp.clear()
     scriptOp.appendRow(['name','label','type','subtype','mininputs','maxinputs','ordering','level','lictype','os','score','family','opType'])
@@ -96,23 +77,16 @@ def onCook(scriptOp):
 
     # Get embedded operators from Opcomp parameter
     parent_comp = installer_comp.parent()
-    debug(f"parent_comp = {parent_comp}")
 
     # Use Opcomp parameter if available
     custom_operators_base = None
     if hasattr(installer_comp.par, 'Opcomp'):
         custom_operators_base = installer_comp.par.Opcomp.eval()
-        debug(f"installer_comp.par.Opcomp = {custom_operators_base}")
 
     if custom_operators_base:
-        debug(f"custom_operators_base.path = {custom_operators_base.path}")
         embedded_ops = custom_operators_base.findChildren(tags=[fam_name], maxDepth=1)
-        debug(f"Found {len(embedded_ops)} embedded ops with tag '{fam_name}'")
-        for op_item in embedded_ops:
-            debug(f"  - {op_item.name} tags={op_item.tags}")
         embedded_names = {o.name.lower() for o in embedded_ops}
     else:
-        debug("custom_operators_base is None!")
         embedded_ops = []
         embedded_names = set()
 
@@ -127,23 +101,21 @@ def onCook(scriptOp):
     exclude_behavior = settings['exclude_behavior', 1].val if settings and settings.row('exclude_behavior') else 'hide'
     show_ungrouped = settings['show_ungrouped', 1].val if settings and settings.row('show_ungrouped') else '1'
 
-    # Read from FolderCache dependency - accessing .val creates cook dependency
-    # When FolderCache changes, this scriptDAT will recook
-    if hasattr(installer_comp, 'FolderCache'):
-        folder_cache = installer_comp.FolderCache.val
-        if folder_cache:
-            for name, info in folder_cache.items():
-                if name.lower() not in embedded_names:
-                    folder_ops.append(type('FolderOp', (), {
-                        'name': name,
-                        'inputConnectors': [],
-                        'path': info['path'],
-                        'folder_category': info.get('category')  # None for ungrouped
-                    })())
+    # Read from Properties folder_cache - accessing creates cook dependency
+    # When folder_cache changes, this scriptDAT will recook
+    folder_cache = installer_comp.Properties['folder_cache']
+    if folder_cache:
+        for name, info in folder_cache.items():
+            if name.lower() not in embedded_names:
+                folder_ops.append(type('FolderOp', (), {
+                    'name': name,
+                    'inputConnectors': [],
+                    'path': info['path'],
+                    'folder_category': info.get('category')  # None for ungrouped
+                })())
 
     # Combine and sort
     ops = list(embedded_ops) + folder_ops
-    debug(f"Total ops (embedded + folder): {len(ops)}")
     ops = sorted(ops, key=lambda o: (group_index.get(o.name.lower(), 'ZZZ'), o.name))
 
     generators_comp = custom_operators_base.op('generators') if custom_operators_base else None

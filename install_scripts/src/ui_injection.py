@@ -24,10 +24,27 @@ class UIInjector:
         """
         self.installer = installer
         self.ownerComp = installer.ownerComp
-        self.family_name = installer.FamilyName.val
-        self.color = installer.color
-        self.compatible_types = installer.compatible_types
         self.connection_map = installer.connection_map
+
+    @property
+    def family_name(self):
+        """Get family name from Properties registry."""
+        return self.installer.Properties['family_name']
+
+    @property
+    def color(self):
+        """Get color from Properties registry."""
+        return self.installer.Properties['color']
+
+    @color.setter
+    def color(self, value):
+        """Set color in Properties registry."""
+        self.installer.Properties['color'] = value
+
+    @property
+    def compatible_types(self):
+        """Get compatible types from Properties registry."""
+        return self.installer.Properties['compatible_types']
 
     def is_installation_needed(self):
         """

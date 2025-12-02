@@ -29,7 +29,11 @@ class StubManager:
         """
         self.installer = installer
         self.ownerComp = installer.ownerComp
-        self.family_name = installer.FamilyName.val
+
+    @property
+    def family_name(self):
+        """Get family name from Properties registry."""
+        return self.installer.Properties['family_name']
 
     def _get_first_element(self, s):
         """Returns the first element of a set/list or None if empty."""

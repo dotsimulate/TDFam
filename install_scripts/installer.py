@@ -19,6 +19,7 @@ MIT License - Based on work by Josef Pelz
 """
 
 import time
+from TDStoreTools import DependDict
 
 FileLoader = mod('src/file_loader').FileLoader
 ConfigManager = mod('src/config_system').ConfigManager
@@ -66,32 +67,33 @@ class OpFamCreateExt:
         print(f"Initializing OpFamCreateExt for {family_name}")
 
         self.ownerComp = ownerComp
-        # Capitalized for promotion - accessible via comp.FamilyName
-        self.FamilyName = tdu.Dependency(family_name)
-        self.color = color
-        self.compatible_types = compatible_types or []
-        self.connection_map = connection_map or {}
 
-        # Installer placement config
+        # Single source of truth for all family properties
+        self.Properties = DependDict({
+            'family_name': family_name,
+            'color': list(color) if color else [0.5, 0.5, 0.5],
+            'index': 0,
+            'operators_comp': operators_comp,
+            'operators_folder': operators_folder,
+            'folder_cache': {},
+            'installed': False,
+            'dynamic_refresh': dynamic_refresh,
+            'compatible_types': compatible_types or [],
+        })
+
+        # Non-reactive config (not in Properties)
+        self.connection_map = connection_map or {}
         self.install_location = install_location if install_location else op('/')
         self.node_x = node_x
         self.node_y = node_y
         self.expose = expose
 
-        # Operator sources
-        self.operators_comp = operators_comp
-        self.operators_folder = operators_folder
-        self.dynamic_refresh = dynamic_refresh
-
-        # Initialize subsystems
+        # Initialize subsystems (they read from Properties)
         self.file_loader = FileLoader(self)
         self.config = ConfigManager(self)
         self.stubs = StubManager(self)
         self.updates = UpdateManager(self)
         self.ui = UIInjector(self)
-
-        # Expose FolderCache for fam_create_callback compatibility
-        self.FolderCache = self.file_loader.cache
 
         # Build initial cache if folder set
         if self.operators_folder and not self.dynamic_refresh:
@@ -103,6 +105,68 @@ class OpFamCreateExt:
 
         # Check for existing installers and set up
         self._initialize_installer()
+
+    # ==================== Property Accessors (Backwards Compatibility) ====================
+
+    @property
+    def FamilyName(self):
+        """Backwards compatible accessor - returns dependency for expressions."""
+        return self.Properties.getDependency('family_name')
+
+    @property
+    def color(self):
+        """Get family color from Properties."""
+        return self.Properties['color']
+
+    @color.setter
+    def color(self, value):
+        """Set family color in Properties."""
+        self.Properties['color'] = list(value) if value else [0.5, 0.5, 0.5]
+
+    @property
+    def operators_comp(self):
+        """Get operators COMP from Properties."""
+        return self.Properties['operators_comp']
+
+    @operators_comp.setter
+    def operators_comp(self, value):
+        """Set operators COMP in Properties."""
+        self.Properties['operators_comp'] = value
+
+    @property
+    def operators_folder(self):
+        """Get operators folder path from Properties."""
+        return self.Properties['operators_folder']
+
+    @operators_folder.setter
+    def operators_folder(self, value):
+        """Set operators folder path in Properties."""
+        self.Properties['operators_folder'] = value
+
+    @property
+    def dynamic_refresh(self):
+        """Get dynamic refresh setting from Properties."""
+        return self.Properties['dynamic_refresh']
+
+    @dynamic_refresh.setter
+    def dynamic_refresh(self, value):
+        """Set dynamic refresh setting in Properties."""
+        self.Properties['dynamic_refresh'] = value
+
+    @property
+    def compatible_types(self):
+        """Get compatible types from Properties."""
+        return self.Properties['compatible_types']
+
+    @compatible_types.setter
+    def compatible_types(self, value):
+        """Set compatible types in Properties."""
+        self.Properties['compatible_types'] = value or []
+
+    @property
+    def FolderCache(self):
+        """Get folder cache dependency for expressions."""
+        return self.Properties.getDependency('folder_cache')
 
     def _initialize_installer(self):
         """Initialize installer position and check for duplicates."""
