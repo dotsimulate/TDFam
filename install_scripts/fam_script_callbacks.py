@@ -27,7 +27,7 @@ def cook(scriptOp):
         return
     currFamily = scriptOp.inputs[0][0,0].val
     our_family = parent(2).par.opshortcut.eval()
-    
+
     # Find the original families operator and nodetable
     families_op = op('/ui/dialogs/menu_op/nodetable/families')
     nodetable = op('/ui/dialogs/menu_op/nodetable')
@@ -39,21 +39,29 @@ def cook(scriptOp):
         if op_name.inputs[0] and op_name.inputs[0].valid:
             active_injects.append(op_name.name)
     
-    # If this isn't our family, just copy input
+    # Get families_op reference
+    families_op = op('/ui/dialogs/menu_op/nodetable/families')
+
+    # If this isn't our family, copy input and un-bypass families so it processes normally
     if currFamily != our_family:
-        scriptOp.copy(scriptOp.inputs[0])
         if families_op:
-            # Only bypass if another inject is actively processing this family
-            should_bypass = any(currFamily in op_name for op_name in active_injects)
-            families_op.bypass = should_bypass
+            families_op.bypass = False
+        scriptOp.copy(scriptOp.inputs[0])
         return
-        
-    # If it is our family, make sure families is bypassed
+
+    # It's our family - bypass families_op and check if OP_fam is ready
     if families_op:
         families_op.bypass = True
-    else:
-        families_op.bypass = False
-    
+
+    familyOps = parent(2).op('OP_fam')
+    if not familyOps or familyOps.numRows < 2 or familyOps.numCols == 0:
+        scriptOp.copy(scriptOp.inputs[0])
+        return
+
+    if 'name' not in [familyOps[0, c].val for c in range(familyOps.numCols)]:
+        scriptOp.copy(scriptOp.inputs[0])
+        return
+
     # Original processing code starts here
     scriptOp.clear()
     scriptOp.appendRow(['name','label','type','subtype','mininputs','maxinputs','ordering','level','lictype','os','score','family','opType'])
@@ -91,9 +99,14 @@ def cook(scriptOp):
     for family in allFamilies:
         if family == our_family:  # Replace the hardcoded LOP check
             familyOps = parent(2).op('OP_fam')
-            # print(f"Processing family: {family}")
-            # print(f"OP_fam table contents:")
-            # print(familyOps.text)
+
+            # Guard: check OP_fam has proper structure before processing
+            if not familyOps or familyOps.numRows < 2 or familyOps.numCols == 0:
+                continue
+
+            # Check 'name' column exists
+            if 'name' not in [familyOps[0, c].val for c in range(familyOps.numCols)]:
+                continue
             
             group_table = parent(2).op('group_mapping')
             # print(f"\nGroup mapping table contents:")
@@ -242,6 +255,16 @@ def cook(scriptOp):
             # Get group order from group_mapping column order (left to right)
             group_order = [group_table[0, col].val for col in range(group_table.numCols)]
 
+            # Build custom order index: {group_name: {op_name: row_index}}
+            custom_order = {}
+            for col in range(group_table.numCols):
+                grp = group_table[0, col].val
+                custom_order[grp] = {}
+                for row in range(1, group_table.numRows):
+                    op_name = group_table[row, col].val
+                    if op_name:
+                        custom_order[grp][op_name.lower()] = row
+
             # Get sort method from settings table
             sort_method = settings['sort_within_group', 1].val if settings and settings.row('sort_within_group') else 'alphabetical'
 
@@ -265,8 +288,10 @@ def cook(scriptOp):
                 elif sort_method == 'by_name':
                     nodes = sorted(grouped_nodes[group_name], key=lambda k: k['nodeName'].lower())
                 elif sort_method == 'custom':
-                    # Preserve original order (from group_mapping row order)
-                    nodes = grouped_nodes[group_name]
+                    # Sort by row order in group_mapping table
+                    grp_order = custom_order.get(group_name, {})
+                    nodes = sorted(grouped_nodes[group_name],
+                                   key=lambda k: grp_order.get(k['nodeName'].lower(), 999))
                 else:
                     # Default to alphabetical
                     nodes = sorted(grouped_nodes[group_name], key=lambda k: k['nodeLabel'].lower())

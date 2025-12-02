@@ -29,16 +29,26 @@ def setup_table_dat(dat_name):
     return table_dat
 
 def onCook(scriptOp):
-    # Get family name from installer extension attribute
+    # Get family name from installer extension attribute (promoted tdu.Dependency)
     installer_comp = parent(2)
-    fam_name = getattr(installer_comp, 'family_name', None)
-    if fam_name is None:
-        # Fallback to Family parameter if exists
-        if hasattr(installer_comp.par, 'Family'):
-            fam_name = installer_comp.par.Family.eval()
+
+    # Access promoted FamilyName attribute (capitalized for promotion)
+    fam_name = None
+    try:
+        fam_dep = installer_comp.FamilyName
+        if hasattr(fam_dep, 'val'):
+            fam_name = fam_dep.val
         else:
-            print("Error: Could not determine family name from installer")
-            return
+            fam_name = fam_dep
+    except AttributeError:
+        pass
+    except Exception as e:
+        # Catches "Cannot use an extension during its initialization"
+        # This happens when OP_fam cooks during __init__ - just skip, will recook later
+        pass
+
+    if not fam_name:
+        return
     scriptOp.clear()
     scriptOp.appendRow(['name','label','type','subtype','mininputs','maxinputs','ordering','level','lictype','os','score','family','opType'])
     

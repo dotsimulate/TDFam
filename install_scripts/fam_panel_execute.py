@@ -2,7 +2,19 @@
 # panelValue - the PanelValue object that changed
 # prev - the previous value of the PanelValue object that changed
 # Make sure the corresponding toggle is enabled in the Panel Execute DAT.
+#
+# This script is deployed to /ui/dialogs/menu_op/{family}_panel_execute
+# Family name is derived dynamically from the script's own name.
+
 import ctypes
+
+def _get_family():
+	"""Derive family name from this script's name."""
+	return me.name.rsplit('_panel_execute', 1)[0]
+
+def _get_installer():
+	"""Get the installer component for this family."""
+	return getattr(op, _get_family())
 
 def onOffToOn(panelValue):
 	return
@@ -17,17 +29,23 @@ def whileOff(panelValue):
 	return
 
 def onValueChange(panelValue, prev):
-    if(op('current')[0,0].val != "FAV"): return
-    license = op.FAV.op('License')
-    if(panelValue == -1): return
+    family = _get_family()
+    installer = _get_installer()
+
+    if op('current')[0,0].val != family:
+        return
+
+    license = installer.op('License')
+    if panelValue == -1:
+        return
 
     # Use the inject script output (sorted/displayed table) instead of raw OP_fam
     # The inject script applies sorting from fam_script_callbacks.py
-    family_name = op.FAV.par.opshortcut.eval()
+    family_name = installer.par.opshortcut.eval()
     inject_script = parent.OPCREATE.op(f'nodetable/inject_{family_name}_fam')
     if not inject_script:
         # Fallback to raw OP_fam if inject not found
-        inject_script = op.FAV.op('OP_fam')
+        inject_script = installer.op('OP_fam')
 
     rows_per_column = parent.OPCREATE.op('nodetable').par.tablerows.eval()
 
@@ -119,6 +137,7 @@ def onValueChange(panelValue, prev):
             target_index = group_start + 1 + position_in_group  # +1 to skip header row
         else:
             target_index = group_start + 1 + position_in_group  # +1 to skip table header (row 0)
+
     # Common validation for both click and ENTER
     if target_index == -1 or target_index >= inject_script.numRows:
         return
@@ -128,23 +147,31 @@ def onValueChange(panelValue, prev):
     display_name = inject_script[target_index, 'name'].val
     lookup_name = display_name.lower()
     normalized_name = lookup_name.replace(' ', '_')
-    
-    if hasattr(op.FAV, 'PlaceOp'):
-        if not op.FAV.PlaceOp(panelValue, lookup_name):
+
+    # PlaceOp hook - can return:
+    #   True  = proceed with placement
+    #   False = cancel and close menu
+    #   None  = cancel but keep menu open (for action operators like theme switchers)
+    if hasattr(installer, 'PlaceOp'):
+        result = installer.PlaceOp(panelValue, lookup_name)
+        if result is None:
+            # Action operator - don't place, keep menu open
+            return
+        if not result:
             parent.OPCREATE.par.winclose.pulse()
             return
 
     # Get operator source - supports both embedded and file-based loading
     source_result = None
-    if hasattr(op.FAV, 'Getoperatorsource'):
-        source_result = op.FAV.Getoperatorsource(lookup_name)
+    if hasattr(installer, 'Getoperatorsource'):
+        source_result = installer.Getoperatorsource(lookup_name)
 
     clone = None
     is_file_based = False
 
     if source_result is None:
         # Fallback to original embedded-only behavior
-        custom_ops = op.FAV.op('custom_operators')
+        custom_ops = installer.op('custom_operators')
         if not custom_ops:
             print(f"Error: Operator '{lookup_name}' not found - no custom_operators and no file source")
             return
@@ -153,7 +180,7 @@ def onValueChange(panelValue, prev):
             print(f"Error: Operator '{lookup_name}' not found in custom_operators")
             return
         master = masters[0]
-        clone = op.FAV.copy(master, name=normalized_name+'1')
+        clone = installer.copy(master, name=normalized_name+'1')
 
     elif source_result[0] == 'file':
         # Load from external .tox file
@@ -173,17 +200,17 @@ def onValueChange(panelValue, prev):
             print(f"Error loading .tox file '{tox_path}': {e}")
             clone = None
             # Fallback to embedded if file load fails AND custom_operators exists
-            custom_ops_base = op.FAV.op('custom_operators')
+            custom_ops_base = installer.op('custom_operators')
             if custom_ops_base:
                 masters = custom_ops_base.findChildren(name=lookup_name, maxDepth=1)
                 if masters:
-                    clone = op.FAV.copy(masters[0], name=normalized_name+'1')
+                    clone = installer.copy(masters[0], name=normalized_name+'1')
                     is_file_based = False
 
     elif source_result[0] == 'embedded':
         # Use embedded operator (normal path)
         master = source_result[1]
-        clone = op.FAV.copy(master, name=normalized_name+'1')
+        clone = installer.copy(master, name=normalized_name+'1')
 
     if clone is None:
         print(f"Error: Could not create operator '{lookup_name}'")
@@ -212,5 +239,5 @@ def onValueChange(panelValue, prev):
     clone.viewer = ui.preferences['network.viewer']
     ui.panes.current.placeOPs([clone], inputIndex=0, outputIndex=0)
     parent.OPCREATE.par.winclose.pulse()
-    if hasattr(op.FAV, 'PostPlaceOp'):
-        op.FAV.PostPlaceOp(clone)
+    if hasattr(installer, 'PostPlaceOp'):
+        installer.PostPlaceOp(clone)
