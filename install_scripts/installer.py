@@ -269,6 +269,70 @@ class OpFamCreateExt:
         if op_fam:
             op_fam.cook(force=True)
 
+    # ==================== Setup API ====================
+
+    def Createopcomp(self, name='custom_operators'):
+        """
+        Create a disabled base COMP at sibling level for embedded operators.
+
+        If par.Opcomp already references a comp, prompts user to:
+        - Replace: update par.Opcomp to new comp
+        - Keep: keep new comp but don't update parameter
+        - Cancel: delete the new comp
+
+        Args:
+            name: Base name for the comp (will version if exists)
+
+        Returns:
+            The created COMP or None if cancelled
+        """
+        ui.undo.startBlock('Create Operators COMP')
+
+        parent_comp = self.ownerComp.parent()
+
+        # Version the name if it exists
+        final_name = name
+        version = 1
+        while parent_comp.op(final_name):
+            version += 1
+            final_name = f"{name}{version}"
+
+        # Create the comp
+        ops_comp = parent_comp.create(baseCOMP, final_name)
+        ops_comp.nodeX = self.ownerComp.nodeX + 250
+        ops_comp.nodeY = self.ownerComp.nodeY
+        ops_comp.allowCooking = False  # Disable it
+
+        # Check if Opcomp parameter already has a value
+        existing_opcomp = None
+        if hasattr(self.ownerComp.par, 'Opcomp'):
+            existing_opcomp = self.ownerComp.par.Opcomp.eval()
+
+        if existing_opcomp:
+            choice = ui.messageBox(
+                'Opcomp Already Set',
+                f'par.Opcomp already references:\n{existing_opcomp.path}\n\nWhat would you like to do?',
+                buttons=['Replace', 'Keep Both', 'Cancel']
+            )
+
+            if choice == 0:  # Replace
+                self.ownerComp.par.Opcomp = ops_comp
+                self.Properties['operators_comp'] = ops_comp
+            elif choice == 1:  # Keep Both
+                pass  # Keep new comp but don't update parameter
+            else:  # Cancel
+                ops_comp.destroy()
+                ui.undo.endBlock()
+                return None
+        else:
+            # No existing, just set it
+            if hasattr(self.ownerComp.par, 'Opcomp'):
+                self.ownerComp.par.Opcomp = ops_comp
+            self.Properties['operators_comp'] = ops_comp
+
+        ui.undo.endBlock()
+        return ops_comp
+
     # ==================== Config API ====================
 
     def ImportConfig(self, source):

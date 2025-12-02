@@ -1,23 +1,29 @@
-# DATExecute callback for config tables
-# Monitor: group_mapping, replace_index, os_incompatible, relabel_index, settings
-#
-# This callback syncs DAT table changes to the Config DependDict.
-# The ConfigManager._syncing flag prevents infinite loops when
-# syncing from Config to tables.
+# me - this DAT.
+# 
+# dat - the changed DAT
+# rows - a list of row indices
+# cols - a list of column indices
+# prev - the list of previous string contents of the changed cells
+# 
+# Make sure the corresponding toggle is enabled in the DAT Execute DAT.
+# 
+# If rows or columns are deleted, sizeChange will be called instead of row/col/cellChange.
+
 
 def onTableChange(dat):
     installer = parent()
     if hasattr(installer, 'config') and installer.config:
         installer.config.on_table_change(dat.name)
 
-def onRowChange(dat, rows, cols):
-    onTableChange(dat)
+def onRowChange(dat, rows):
+	return
 
 def onColChange(dat, cols):
-    onTableChange(dat)
+	return
 
 def onCellChange(dat, cells, prev):
-    onTableChange(dat)
+	return
 
 def onSizeChange(dat):
-    onTableChange(dat)
+	return
+	

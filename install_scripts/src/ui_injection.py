@@ -554,8 +554,12 @@ elif(source == 'input' and ({compatible_check})):
         color_val = list(new_color) if new_color else [0.5, 0.5, 0.5]
         color_tuple = (color_val[0], color_val[1], color_val[2])
 
-        custom_ops = self.installer.operators_comp
+        # Get operators_comp from parameter
+        custom_ops = self.ownerComp.par.Opcomp.eval() if hasattr(self.ownerComp.par, 'Opcomp') else None
         if custom_ops:
+            # Update the Opcomp container itself
+            custom_ops.color = color_tuple
+            # Update all operators inside
             for comp in custom_ops.findChildren(type=COMP, maxDepth=1):
                 comp.color = color_tuple
 

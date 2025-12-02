@@ -78,8 +78,9 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
             # Sync all parameters to Properties registry (the real initialization)
             self._sync_parameters()
 
-            # Auto-tag operators in custom_operators
-            self.TagOperators()
+            # Build folder cache now that operators_folder is set from parameters
+            if self.operators_folder and not self.dynamic_refresh:
+                self.file_loader.refresh_cache(self.operators_folder)
 
     def _sync_parameters(self):
         """Read parameters and update Properties registry."""
@@ -217,7 +218,7 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         else:
             super().Uninstall()
 
-    def SetColor(self, r=None, g=None, b=None):
+    def Color(self, r=None, g=None, b=None):
         """
         Set family color and update UI.
 
@@ -234,13 +235,8 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         # Update registry - this triggers all dependent expressions
         self.Properties['color'] = [r, g, b]
 
-        # Also update parameters
-        self._installer.par.Colorr = r
-        self._installer.par.Colorg = g
-        self._installer.par.Colorb = b
-
-        if hasattr(self, 'ui') and self.ui:
-            self.ui.update_family_color(self.Properties['color'])
+        if hasattr(self, 'ui_injector') and self.ui_injector:
+            self.ui_injector.update_family_color(self.Properties['color'])
 
     # --- Stub for single operator ---
 
@@ -393,3 +389,15 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
             List of updated COMPs
         """
         return super().Updateall()
+
+    def Tagoperators(self, pattern=None):
+        """
+        Tag all operators in Opcomp with family and type tags.
+        Exposed as pulse parameter.
+
+        Args:
+            pattern: Tag pattern ('suffix' or 'name'). If None, uses 'suffix'.
+        """
+        if pattern is None:
+            pattern = 'suffix'
+        return super().TagOperators(pattern)

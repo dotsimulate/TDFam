@@ -172,7 +172,7 @@ def onValueChange(panelValue, prev):
 
     if source_result is None:
         # Fallback to original embedded-only behavior
-        custom_ops = installer.operators_comp
+        custom_ops = installer.par.Opcomp.eval() if hasattr(installer.par, 'Opcomp') else None
         if not custom_ops:
             print(f"Error: Operator '{lookup_name}' not found - no operators_comp and no file source")
             return
@@ -201,7 +201,7 @@ def onValueChange(panelValue, prev):
             print(f"Error loading .tox file '{tox_path}': {e}")
             clone = None
             # Fallback to embedded if file load fails AND operators_comp exists
-            custom_ops_base = installer.operators_comp
+            custom_ops_base = installer.par.Opcomp.eval() if hasattr(installer.par, 'Opcomp') else None
             if custom_ops_base:
                 masters = custom_ops_base.findChildren(name=lookup_name, maxDepth=1)
                 if masters:
@@ -219,6 +219,11 @@ def onValueChange(panelValue, prev):
 
     clone.allowCooking = True
     clone.bypass = False
+
+    # Apply family color to file-based ops if Colorfileops is enabled
+    if is_file_based and hasattr(installer.par, 'Colorfileops') and installer.par.Colorfileops.eval():
+        color = installer.par.Colorr.eval(), installer.par.Colorg.eval(), installer.par.Colorb.eval()
+        clone.color = color
 
     # Handle license copying - check clone.family since master may not exist for file-based
     # Only copy license if the installer has a License op
