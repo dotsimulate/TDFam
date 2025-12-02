@@ -218,6 +218,27 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         else:
             super().Uninstall()
 
+    def Family(self, name=None):
+        """
+        Update the family name and all associated UI elements.
+
+        Args:
+            name: New family name. If None, uses Family parameter value.
+        """
+        if name is None:
+            name = self._installer.par.Family.eval()
+
+        # Get old name before updating
+        old_name = self.Properties['family_name']
+
+        # Skip if no change
+        if old_name == name:
+            return
+
+        # Delegate to ui_injector which handles Properties, shortcut, and UI elements
+        if hasattr(self, 'ui_injector') and self.ui_injector:
+            self.ui_injector.update_family_name(old_name, name)
+
     def Color(self, r=None, g=None, b=None):
         """
         Set family color and update UI.

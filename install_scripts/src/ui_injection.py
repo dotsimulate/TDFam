@@ -54,12 +54,7 @@ class UIInjector:
             bool: True if installation needed, False if already installed
         """
         try:
-            # Check toggle button
-            toggle_path = f"/ui/dialogs/bookmark_bar/{self.family_name}_toggle"
-            if op(toggle_path):
-                return False
-
-            # Check inject operation
+            # Check inject operation in nodetable
             nodeTable = op('/ui/dialogs/menu_op/nodetable')
             if nodeTable:
                 inject_op_name = f'inject_{self.family_name}_fam'
@@ -142,8 +137,8 @@ class UIInjector:
             menuOp = op('/ui/dialogs/menu_op')
             nodeTable = op('/ui/dialogs/menu_op/nodetable')
 
-            # 1. Create toggle button in bookmark_bar
-            self._create_toggle_button()
+            # 1. Register with central UI manager
+            self._register_with_ui_manager()
 
             # 2. Create family insert DAT
             self._create_family_insert(menuOp)
@@ -193,6 +188,9 @@ class UIInjector:
 
             print(f"Beginning uninstall of {self.family_name}")
             self.ownerComp.par.Install = 0
+
+            # Unregister from central UI manager
+            self._unregister_from_ui_manager()
 
             menuOp = op('/ui/dialogs/menu_op')
             nodeTable = op('/ui/dialogs/menu_op/nodetable')
@@ -249,32 +247,39 @@ class UIInjector:
 
     # ==================== Private Install Helpers ====================
 
-    def _create_toggle_button(self):
-        """Create toggle button in bookmark bar."""
-        toggle_path = f"/ui/dialogs/bookmark_bar/{self.family_name}_toggle"
-        if op(toggle_path):
-            return
+    def _get_or_create_ui_manager(self):
+        """Get or create the central opFamUI manager."""
+        # Check if already installed at global location
+        ui_manager_path = '/ui/dialogs/mainmenu/opFamUI'
+        ui_manager = op(ui_manager_path)
 
-        # Update toggle template text
-        toggle_template = self.ownerComp.op('fam_toggle')
-        if toggle_template:
-            text_op = toggle_template.op('button/text1')
-            if text_op:
-                text_op.par.text = self.family_name
+        if not ui_manager:
+            # Copy from our template
+            template = self.ownerComp.op('opFamUI')
+            if template:
+                mainmenu = op('/ui/dialogs/mainmenu')
+                if mainmenu:
+                    ui_manager = mainmenu.copy(template, name='opFamUI')
+                    ui_manager.allowCooking = True
 
-            toggle = op('/ui/dialogs/bookmark_bar').copy(
-                toggle_template,
-                name=f"{self.family_name}_toggle"
-            )
-            toggle.allowCooking = True
-            toggle.inputCOMPConnectors[0].connect(
-                op('/ui/dialogs/bookmark_bar/emptypanel')
-            )
-            toggle.op('button').par.value0.bindExpr = f"op.{self.family_name}.par.Install"
+                    # Wire up to emptypanel in mainmenu
+                    emptypanel = mainmenu.op('emptypanel')
+                    if emptypanel and ui_manager.inputCOMPConnectors:
+                        ui_manager.inputCOMPConnectors[0].connect(emptypanel)
 
-            opexec1 = toggle.op('opexec1')
-            if opexec1:
-                opexec1.par.op.expr = f"op.{self.family_name}"
+        return ui_manager
+
+    def _register_with_ui_manager(self):
+        """Register this family with the central opFamUI manager."""
+        ui_manager = self._get_or_create_ui_manager()
+        if ui_manager and hasattr(ui_manager, 'RegisterFamily'):
+            ui_manager.RegisterFamily(self.ownerComp)
+
+    def _unregister_from_ui_manager(self):
+        """Unregister this family from the central opFamUI manager."""
+        ui_manager = op('/ui/dialogs/mainmenu/opFamUI')
+        if ui_manager and hasattr(ui_manager, 'UnregisterFamily'):
+            ui_manager.UnregisterFamily(self.family_name)
 
     def _create_family_insert(self, menuOp):
         """Create family insert DAT in menu_op."""
@@ -604,3 +609,104 @@ elif(source == 'input' and ({compatible_check})):
                 comp.color = color_tuple
 
         self.ownerComp.color = color_tuple
+
+    def update_family_name(self, old_name, new_name):
+        """
+        Update family name without full reinstall.
+
+        Renames all UI elements if currently installed.
+
+        Args:
+            old_name: Previous family name
+            new_name: New family name
+        """
+        # Update Properties registry
+        self.installer.Properties['family_name'] = new_name
+
+        # Update op shortcut
+        self.ownerComp.par.opshortcut = new_name
+
+        # If not installed, nothing else to update
+        if not self.ownerComp.par.Install.eval():
+            return
+
+        menuOp = op('/ui/dialogs/menu_op')
+        nodeTable = op('/ui/dialogs/menu_op/nodetable')
+        if not menuOp:
+            return
+
+        # 1. Update registration in central UI manager
+        ui_manager = op('/ui/dialogs/mainmenu/opFamUI')
+        if ui_manager and hasattr(ui_manager, 'UpdateFamilyName'):
+            ui_manager.UpdateFamilyName(old_name, new_name)
+
+        # 2. Rename family insert DAT
+        old_insert = menuOp.op(f'{old_name}_insert')
+        if old_insert:
+            old_insert.name = f'{new_name}_insert'
+            old_insert.par.contents = new_name
+            if hasattr(self.ownerComp.par, 'Index'):
+                old_insert.par.index.expr = f'op.{new_name}.par.Index'
+
+        # 3. Update colors table
+        colors_table = menuOp.op('colors')
+        if colors_table:
+            for i in range(colors_table.numRows):
+                if colors_table[i, 0].val == f"'{old_name}'":
+                    colors_table[i, 0] = f"'{new_name}'"
+                    break
+
+        # 4. Update set_last_node_type script
+        setLastNodeType = menuOp.op('set_last_node_type')
+        if setLastNodeType:
+            setLastNodeType.text = setLastNodeType.text.replace(
+                f"'{old_name}'", f"'{new_name}'"
+            )
+
+        # 5. Rename inject script in nodetable
+        old_inject = nodeTable.op(f'inject_{old_name}_fam')
+        if old_inject:
+            old_inject.name = f'inject_{new_name}_fam'
+            old_inject.par.callbacks.expr = f"op.{new_name}.op('fam_script_callbacks')"
+
+        # 6. Update eval4 expression
+        eval4 = nodeTable.op('eval4')
+        if eval4:
+            current_expr = eval4.par.expr.expr
+            if current_expr and old_name in current_expr:
+                eval4.par.expr = current_expr.replace(f"'{old_name}'", f"'{new_name}'")
+
+        # 7. Update create_node script
+        createNode = menuOp.op('create_node')
+        if createNode and old_name in createNode.text:
+            createNode.text = createNode.text.replace(
+                f"'{old_name}'", f"'{new_name}'"
+            )
+
+        # 8. Update search panel exec
+        searchExec = menuOp.op('search/panelexec1')
+        if searchExec and old_name in searchExec.text:
+            searchExec.text = searchExec.text.replace(
+                f"'{old_name}'", f"'{new_name}'"
+            )
+
+        # 9. Rename panel execute
+        old_panel = menuOp.op(f'{old_name}_panel_execute')
+        if old_panel:
+            old_panel.name = f'{new_name}_panel_execute'
+
+        # 10. Update compatible table
+        compatibleTable = menuOp.op('compatible')
+        if compatibleTable:
+            # Update row header
+            for i in range(compatibleTable.numRows):
+                if compatibleTable[i, 0].val == old_name:
+                    compatibleTable[i, 0] = new_name
+                    break
+            # Update column header
+            for i in range(compatibleTable.numCols):
+                if compatibleTable[0, i].val == old_name:
+                    compatibleTable[0, i] = new_name
+                    break
+
+        print(f"Family name updated from '{old_name}' to '{new_name}'")
