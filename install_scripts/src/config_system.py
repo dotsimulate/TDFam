@@ -1,7 +1,14 @@
 """
 Configuration system for opfam-create.
 
-Handles JSON import/export and settings table management for operator families.
+Handles JSON import/export and two-way sync between Config DependDict and DAT tables.
+
+Architecture:
+    JSON Import -> Config DependDict -> DAT Tables
+    DAT Tables (via DATExecute) -> Config DependDict -> JSON Export
+
+Config DependDict is source of truth for code.
+DAT Tables are visual/no-code interface.
 """
 
 import json
@@ -12,6 +19,7 @@ class ConfigManager:
     Manages configuration tables and settings for an operator family.
 
     Supports:
+    - Two-way sync between Config DependDict and DAT tables
     - JSON import/export
     - Settings table management
     - Group mapping, replace index, OS compatibility, relabel tables
@@ -26,8 +34,236 @@ class ConfigManager:
         """
         self.installer = installer
         self.ownerComp = installer.ownerComp
+        self._syncing = False  # Loop prevention flag
 
-    # ==================== Settings Table ====================
+    # ==================== Sync Methods ====================
+
+    def sync_tables_to_config(self):
+        """Read all DAT tables into Config DependDict."""
+        config = self.installer.Config
+        config['group_mapping'] = self._read_group_mapping_table()
+        config['replace_index'] = self._read_replace_index_table()
+        config['os_incompatible'] = self._read_os_incompatible_table()
+        config['relabel_index'] = self._read_relabel_index_table()
+        config['settings'] = self._read_settings_table()
+
+    def sync_config_to_tables(self):
+        """Write Config DependDict to DAT tables."""
+        self._syncing = True
+        try:
+            config = self.installer.Config
+            self._write_group_mapping_table(config['group_mapping'])
+            self._write_replace_index_table(config['replace_index'])
+            self._write_os_incompatible_table(config['os_incompatible'])
+            self._write_relabel_index_table(config['relabel_index'])
+            self._write_settings_table(config['settings'])
+        finally:
+            self._syncing = False
+
+    def on_table_change(self, table_name):
+        """Called by DATExecute when a config table changes."""
+        if self._syncing:
+            return  # Prevent loop
+
+        # Sync just the changed table to Config
+        config = self.installer.Config
+        if table_name == 'group_mapping':
+            config['group_mapping'] = self._read_group_mapping_table()
+        elif table_name == 'replace_index':
+            config['replace_index'] = self._read_replace_index_table()
+        elif table_name == 'os_incompatible':
+            config['os_incompatible'] = self._read_os_incompatible_table()
+        elif table_name == 'relabel_index':
+            config['relabel_index'] = self._read_relabel_index_table()
+        elif table_name == 'settings':
+            config['settings'] = self._read_settings_table()
+
+    # ==================== Read Table Methods ====================
+
+    def _read_group_mapping_table(self):
+        """Read group_mapping DAT into dict."""
+        table = self.ownerComp.op('group_mapping')
+        if not table or table.numRows == 0:
+            return {}
+
+        result = {}
+        for col in range(table.numCols):
+            group_name = table[0, col].val
+            if not group_name:
+                continue
+            operators = []
+            for row in range(1, table.numRows):
+                op_name = table[row, col].val
+                if op_name:
+                    operators.append(op_name)
+            result[group_name] = operators
+        return result
+
+    def _read_replace_index_table(self):
+        """Read replace_index DAT into dict."""
+        table = self.ownerComp.op('replace_index')
+        if not table or table.numRows == 0:
+            return {}
+
+        result = {}
+        # Check if first row is header
+        start_row = 0
+        if table.numRows > 0 and table[0, 0].val in ('find', 'old', 'search'):
+            start_row = 1
+
+        for row in range(start_row, table.numRows):
+            old_str = table[row, 0].val
+            new_str = table[row, 1].val if table.numCols > 1 else ''
+            if old_str:
+                result[old_str] = new_str
+        return result
+
+    def _read_os_incompatible_table(self):
+        """Read os_incompatible DAT into dict."""
+        table = self.ownerComp.op('os_incompatible')
+        if not table or table.numRows <= 1:
+            return {}
+
+        result = {}
+        for row in range(1, table.numRows):
+            op_name = table[row, 0].val
+            if not op_name:
+                continue
+            windows = int(table[row, 1].val) if table.numCols > 1 else 1
+            mac = int(table[row, 2].val) if table.numCols > 2 else 1
+            exclude = int(table[row, 3].val) if table.numCols > 3 else 0
+            result[op_name] = {'windows': windows, 'mac': mac, 'exclude': exclude}
+        return result
+
+    def _read_relabel_index_table(self):
+        """Read relabel_index DAT into dict."""
+        table = self.ownerComp.op('relabel_index')
+        if not table or table.numRows == 0:
+            return {}
+
+        result = {}
+        # Check if first row is header
+        start_row = 0
+        if table.numRows > 0 and table[0, 0].val in ('index', 'idx'):
+            start_row = 1
+
+        for row in range(start_row, table.numRows):
+            idx_str = table[row, 0].val
+            label = table[row, 1].val if table.numCols > 1 else ''
+            if idx_str:
+                result[str(idx_str)] = label
+        return result
+
+    def _read_settings_table(self):
+        """Read settings DAT into dict."""
+        table = self.ownerComp.op('settings')
+        if not table or table.numRows <= 1:
+            return {}
+
+        result = {}
+        for row in range(1, table.numRows):
+            key = table[row, 0].val
+            value = table[row, 1].val if table.numCols > 1 else ''
+            if key:
+                result[key] = value
+        return result
+
+    # ==================== Write Table Methods ====================
+
+    def _write_group_mapping_table(self, data):
+        """Write dict to group_mapping DAT."""
+        table = self.ownerComp.op('group_mapping')
+        if not table:
+            table = self.ownerComp.create(tableDAT, 'group_mapping')
+        table.clear()
+
+        if not data:
+            # Empty table still gets placeholder header
+            table.appendRow(['group'])
+            return
+
+        group_names = list(data.keys())
+        max_ops = max(len(ops) for ops in data.values()) if data else 0
+
+        # Header row (group names)
+        table.appendRow(group_names)
+
+        # Operator rows
+        for row_idx in range(max_ops):
+            row = []
+            for group_name in group_names:
+                ops = data[group_name]
+                row.append(ops[row_idx] if row_idx < len(ops) else '')
+            table.appendRow(row)
+
+    def _write_replace_index_table(self, data):
+        """Write dict to replace_index DAT."""
+        table = self.ownerComp.op('replace_index')
+        if not table:
+            table = self.ownerComp.create(tableDAT, 'replace_index')
+        table.clear()
+
+        # Always add header row
+        table.appendRow(['find', 'replace'])
+
+        if not data:
+            return
+
+        for old_str, new_str in data.items():
+            table.appendRow([old_str, new_str])
+
+    def _write_os_incompatible_table(self, data):
+        """Write dict to os_incompatible DAT."""
+        table = self.ownerComp.op('os_incompatible')
+        if not table:
+            table = self.ownerComp.create(tableDAT, 'os_incompatible')
+        table.clear()
+
+        # Header row
+        table.appendRow(['operator_name', 'windows', 'mac', 'exclude'])
+
+        if not data:
+            return
+
+        for op_name, os_vals in data.items():
+            windows = os_vals.get('windows', 1)
+            mac = os_vals.get('mac', 1)
+            exclude = os_vals.get('exclude', 0)
+            table.appendRow([op_name, windows, mac, exclude])
+
+    def _write_relabel_index_table(self, data):
+        """Write dict to relabel_index DAT."""
+        table = self.ownerComp.op('relabel_index')
+        if not table:
+            table = self.ownerComp.create(tableDAT, 'relabel_index')
+        table.clear()
+
+        # Always add header row
+        table.appendRow(['index', 'label'])
+
+        if not data:
+            return
+
+        for idx_str, label in data.items():
+            table.appendRow([idx_str, label])
+
+    def _write_settings_table(self, data):
+        """Write dict to settings DAT."""
+        table = self.ownerComp.op('settings')
+        if not table:
+            table = self.ownerComp.create(tableDAT, 'settings')
+        table.clear()
+
+        # Header row
+        table.appendRow(['key', 'value'])
+
+        if not data:
+            return
+
+        for key, value in data.items():
+            table.appendRow([key, value])
+
+    # ==================== Settings Convenience Methods ====================
 
     def ensure_settings_table(self):
         """
@@ -44,7 +280,7 @@ class ConfigManager:
 
     def get_setting(self, key, default=None):
         """
-        Get a setting value from the settings table.
+        Get a setting value from Config DependDict.
 
         Args:
             key: The setting key
@@ -53,251 +289,92 @@ class ConfigManager:
         Returns:
             The setting value or default
         """
-        settings = self.ownerComp.op('settings')
-        if settings and settings.row(key):
-            return settings[key, 1].val
-        return default
+        settings = self.installer.Config.get('settings', {})
+        return settings.get(key, default)
 
     def set_setting(self, key, value):
         """
-        Set a setting value in the settings table.
+        Set a setting value in Config DependDict and sync to table.
 
         Args:
             key: The setting key
             value: The value to set
         """
-        settings = self.ensure_settings_table()
-        if settings.row(key) is None:
-            settings.appendRow([key, value])
-        else:
-            settings[key, 1] = value
+        config = self.installer.Config
+        if 'settings' not in config or not config['settings']:
+            config['settings'] = {}
+        config['settings'][key] = value
 
-    # ==================== Import Helpers ====================
+        # Sync just this setting to table
+        self._syncing = True
+        try:
+            table = self.ensure_settings_table()
+            if table.row(key) is None:
+                table.appendRow([key, value])
+            else:
+                table[key, 1] = value
+        finally:
+            self._syncing = False
 
-    def _import_group_mapping(self, data):
+    # ==================== Table Management ====================
+
+    def ensure_tables_exist(self):
         """
-        Import group_mapping from dict.
-
-        Args:
-            data: Group mapping dict {group_name: [operator_names]}
+        Create all config tables with proper headers if they don't exist.
+        Call this on init to ensure tables are available for no-code editing.
         """
+        # group_mapping - header row contains group names (columns)
         table = self.ownerComp.op('group_mapping')
         if not table:
             table = self.ownerComp.create(tableDAT, 'group_mapping')
+            table.clear()
+            table.appendRow(['group'])  # Placeholder header
 
-        table.clear()
-
-        if not data:
-            return
-
-        group_names = list(data.keys())
-        max_ops = max(len(ops) for ops in data.values()) if data else 0
-
-        # Header row
-        table.appendRow(group_names)
-
-        # Operator rows
-        for row_idx in range(max_ops):
-            row = []
-            for group_name in group_names:
-                ops = data[group_name]
-                row.append(ops[row_idx] if row_idx < len(ops) else '')
-            table.appendRow(row)
-
-    def _import_replace_index(self, data):
-        """
-        Import replace_index from dict.
-
-        Args:
-            data: Replace mapping {old_string: new_string}
-        """
+        # replace_index
         table = self.ownerComp.op('replace_index')
         if not table:
             table = self.ownerComp.create(tableDAT, 'replace_index')
+            table.clear()
+            table.appendRow(['find', 'replace'])
 
-        table.clear()
-
-        if not data:
-            return
-
-        for old_str, new_str in data.items():
-            table.appendRow([old_str, new_str])
-
-    def _import_os_incompatible(self, data):
-        """
-        Import os_incompatible from dict.
-
-        Args:
-            data: OS compatibility {op_name: {windows: 0/1, mac: 0/1, exclude: 0/1}}
-        """
+        # os_incompatible
         table = self.ownerComp.op('os_incompatible')
         if not table:
             table = self.ownerComp.create(tableDAT, 'os_incompatible')
+            table.clear()
+            table.appendRow(['operator_name', 'windows', 'mac', 'exclude'])
 
-        table.clear()
-        table.appendRow(['operator_name', 'windows', 'mac', 'exclude'])
-
-        if not data:
-            return
-
-        for op_name, os_vals in data.items():
-            windows = os_vals.get('windows', 1)
-            mac = os_vals.get('mac', 1)
-            exclude = os_vals.get('exclude', 0)
-            table.appendRow([op_name, windows, mac, exclude])
-
-    def _import_relabel_index(self, data):
-        """
-        Import relabel_index from dict.
-
-        Args:
-            data: Relabel mapping {index_str: label}
-        """
+        # relabel_index
         table = self.ownerComp.op('relabel_index')
         if not table:
             table = self.ownerComp.create(tableDAT, 'relabel_index')
+            table.clear()
+            table.appendRow(['index', 'label'])
 
-        table.clear()
-
-        if not data:
-            return
-
-        for idx_str, label in data.items():
-            table.appendRow([idx_str, label])
-
-    def _import_settings(self, data):
-        """
-        Import settings from dict.
-
-        Args:
-            data: Settings {key: value}
-        """
-        if not data:
-            return
-
-        for key, value in data.items():
-            self.set_setting(key, value)
-
-    # ==================== Export Helpers ====================
-
-    def _export_group_mapping(self):
-        """
-        Export group_mapping table to dict.
-
-        Returns:
-            dict: {group_name: [operator_names]}
-        """
-        table = self.ownerComp.op('group_mapping')
-        if not table or table.numRows == 0:
-            return {}
-
-        result = {}
-
-        for col in range(table.numCols):
-            group_name = table[0, col].val
-            if not group_name:
-                continue
-
-            operators = []
-            for row in range(1, table.numRows):
-                op_name = table[row, col].val
-                if op_name:
-                    operators.append(op_name)
-
-            result[group_name] = operators
-
-        return result
-
-    def _export_replace_index(self):
-        """
-        Export replace_index table to dict.
-
-        Returns:
-            dict: {old_string: new_string}
-        """
-        table = self.ownerComp.op('replace_index')
-        if not table or table.numRows == 0:
-            return {}
-
-        result = {}
-        for row in range(table.numRows):
-            old_str = table[row, 0].val
-            new_str = table[row, 1].val if table.numCols > 1 else ''
-            if old_str:
-                result[old_str] = new_str
-
-        return result
-
-    def _export_os_incompatible(self):
-        """
-        Export os_incompatible table to dict.
-
-        Returns:
-            dict: {op_name: {windows: 0/1, mac: 0/1, exclude: 0/1}}
-        """
-        table = self.ownerComp.op('os_incompatible')
-        if not table or table.numRows <= 1:
-            return {}
-
-        result = {}
-        for row in range(1, table.numRows):
-            op_name = table[row, 0].val
-            if not op_name:
-                continue
-
-            windows = int(table[row, 1].val) if table.numCols > 1 else 1
-            mac = int(table[row, 2].val) if table.numCols > 2 else 1
-            exclude = int(table[row, 3].val) if table.numCols > 3 else 0
-
-            result[op_name] = {'windows': windows, 'mac': mac, 'exclude': exclude}
-
-        return result
-
-    def _export_relabel_index(self):
-        """
-        Export relabel_index table to dict.
-
-        Returns:
-            dict: {index_str: label}
-        """
-        table = self.ownerComp.op('relabel_index')
-        if not table or table.numRows == 0:
-            return {}
-
-        result = {}
-        for row in range(table.numRows):
-            idx_str = table[row, 0].val
-            label = table[row, 1].val if table.numCols > 1 else ''
-            if idx_str:
-                result[str(idx_str)] = label
-
-        return result
-
-    def _export_settings(self):
-        """
-        Export settings table to dict.
-
-        Returns:
-            dict: {key: value}
-        """
+        # settings
         table = self.ownerComp.op('settings')
-        if not table or table.numRows <= 1:
-            return {}
+        if not table:
+            table = self.ownerComp.create(tableDAT, 'settings')
+            table.clear()
+            table.appendRow(['key', 'value'])
 
-        result = {}
-        for row in range(1, table.numRows):
-            key = table[row, 0].val
-            value = table[row, 1].val if table.numCols > 1 else ''
-            if key:
-                result[key] = value
+    def ensure_table_headers(self):
+        """Ensure existing config tables have proper headers (migration helper)."""
+        # replace_index
+        table = self.ownerComp.op('replace_index')
+        if table and table.numRows > 0 and table[0, 0].val not in ('find', 'old', 'search'):
+            table.insertRow(['find', 'replace'], 0)
 
-        return result
+        # relabel_index
+        table = self.ownerComp.op('relabel_index')
+        if table and table.numRows > 0 and table[0, 0].val not in ('index', 'idx'):
+            table.insertRow(['index', 'label'], 0)
 
     # ==================== Public API ====================
 
     def import_config(self, source):
         """
-        Import JSON config into tables.
+        Import JSON config into Config DependDict, then sync to tables.
 
         Args:
             source: Can be one of:
@@ -307,24 +384,25 @@ class ConfigManager:
         Returns:
             tuple: (success: bool, message: str)
         """
-        config = None
+        config_data = None
         source_desc = "config"
 
+        # Parse source
         if isinstance(source, dict):
-            config = source
+            config_data = source
             source_desc = "dict"
         elif isinstance(source, str):
             stripped = source.strip()
             if stripped.startswith('{'):
                 try:
-                    config = json.loads(source)
+                    config_data = json.loads(source)
                     source_desc = "JSON string"
                 except json.JSONDecodeError as e:
                     return (False, f"JSON parse error: {e}")
             else:
                 try:
                     with open(source, 'r') as f:
-                        config = json.load(f)
+                        config_data = json.load(f)
                     source_desc = source
                 except json.JSONDecodeError as e:
                     return (False, f"JSON parse error: {e}")
@@ -335,16 +413,18 @@ class ConfigManager:
         else:
             return (False, f"Invalid source type: {type(source)}")
 
-        # Import tables
-        if 'tables' in config:
-            self._import_group_mapping(config['tables'].get('group_mapping', {}))
-            self._import_replace_index(config['tables'].get('replace_index', {}))
-            self._import_os_incompatible(config['tables'].get('os_incompatible', {}))
-            self._import_relabel_index(config['tables'].get('relabel_index', {}))
+        # Update Config DependDict (source of truth)
+        installer_config = self.installer.Config
+        if 'tables' in config_data:
+            installer_config['group_mapping'] = config_data['tables'].get('group_mapping', {})
+            installer_config['replace_index'] = config_data['tables'].get('replace_index', {})
+            installer_config['os_incompatible'] = config_data['tables'].get('os_incompatible', {})
+            installer_config['relabel_index'] = config_data['tables'].get('relabel_index', {})
+        if 'settings' in config_data:
+            installer_config['settings'] = config_data['settings']
 
-        # Import settings
-        if 'settings' in config:
-            self._import_settings(config['settings'])
+        # Sync to tables (visual representation)
+        self.sync_config_to_tables()
 
         # Force recook OP_fam
         op_fam = self.ownerComp.op('OP_fam')
@@ -355,7 +435,7 @@ class ConfigManager:
 
     def export_config(self, path=None):
         """
-        Export current tables to JSON config.
+        Export config from DependDict to JSON.
 
         Args:
             path: Full path for JSON output file.
@@ -365,22 +445,23 @@ class ConfigManager:
             If path provided: tuple (success: bool, message: str)
             If path is None: dict (the config)
         """
-        config = {
+        config = self.installer.Config
+        export_data = {
             "tables": {
-                "group_mapping": self._export_group_mapping(),
-                "replace_index": self._export_replace_index(),
-                "os_incompatible": self._export_os_incompatible(),
-                "relabel_index": self._export_relabel_index()
+                "group_mapping": config['group_mapping'],
+                "replace_index": config['replace_index'],
+                "os_incompatible": config['os_incompatible'],
+                "relabel_index": config['relabel_index']
             },
-            "settings": self._export_settings()
+            "settings": config['settings']
         }
 
         if path is None:
-            return config
+            return export_data
 
         try:
             with open(path, 'w') as f:
-                json.dump(config, f, indent=2)
+                json.dump(export_data, f, indent=2)
             return (True, f"Exported config to {path}")
         except Exception as e:
             return (False, f"Export error: {e}")

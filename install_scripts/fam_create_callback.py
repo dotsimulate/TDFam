@@ -1,8 +1,7 @@
 # me - this DAT
 # scriptOp - the OP which is cooking
-# FAM CREATE CALLBACK CUSTOM
-# press 'Setup Parameters' in the OP to call this function to re-create the parameters.
-import platform
+# FAM CREATE CALLBACK
+# Builds the operator family menu from Config DependDict and Properties
 import re
 
 def onSetupParameters(scriptOp):
@@ -17,68 +16,58 @@ def _parse_tox_info(filename):
         return (filename[:-4], None)
     return (None, None)
 
-# called whenever custom pulse parameter is pushed
 def onPulse(par):
     return
 
-def setup_table_dat(dat_name):
-    """Create or get a Table DAT."""
-    table_dat = parent(2).op(dat_name)
-    if table_dat is None:
-        table_dat = parent(2).create(tableDAT, dat_name)
-    return table_dat
-
 def onCook(scriptOp):
-    # Get family name from installer Properties registry
+    # Get installer and check if ready
     installer_comp = parent()
-    fam_name = None
 
     try:
         fam_name = installer_comp.Properties['family_name']
-    except Exception as e:
-        # Catches "Cannot use an extension during its initialization"
-        # This happens when OP_fam cooks during __init__ - just skip, will recook later
-        pass
+        config = installer_comp.Config
+    except Exception:
+        # Extension not ready yet (happens during __init__)
+        return
 
     if not fam_name:
         return
+
     scriptOp.clear()
     scriptOp.appendRow(['name','label','type','subtype','mininputs','maxinputs','ordering','level','lictype','os','score','family','opType'])
-    
-    relabel_table = setup_table_dat('relabel_index')
-    replace_table = setup_table_dat('replace_index')
-    os_table = setup_table_dat('os_incompatible')
-    group_table = setup_table_dat('group_mapping')
-    
-    # Create a dictionary to map operators to groups
+
+    # Read from Config DependDict (source of truth)
+    group_mapping = config.get('group_mapping', {})
+    replace_index_data = config.get('replace_index', {})
+    os_incompatible = config.get('os_incompatible', {})
+    relabel_index_data = config.get('relabel_index', {})
+    settings_data = config.get('settings', {})
+
+    # Build group_index: operator_name -> group_name
     group_index = {}
-    for col in range(group_table.numCols):
-        group_name = group_table[0, col].val
-        for row in range(1, group_table.numRows):
-            operator_name = group_table[row, col].val
-            if operator_name:
-                normalized_name = operator_name.lower().replace(' ', '_')
-                group_index[normalized_name] = group_name
-    
-    # Define os_values and exclude_values
+    for group_name, operators in group_mapping.items():
+        for op_name in operators:
+            normalized_name = op_name.lower().replace(' ', '_')
+            group_index[normalized_name] = group_name
+
+    # Build os_values and exclude_values from os_incompatible
     os_values = {}
     exclude_values = {}
-    for row in os_table.rows()[1:]:
-        if row[0].val:
-            op_name = str(row[0].val).lower().replace(' ', '_')
-            os_values[op_name] = str(row[1].val) if len(row) > 1 else '1'
-            exclude_values[op_name] = str(row[3].val) if len(row) > 3 else '0'
+    for op_name, os_data in os_incompatible.items():
+        normalized = op_name.lower().replace(' ', '_')
+        os_values[normalized] = str(os_data.get('windows', 1))
+        exclude_values[normalized] = str(os_data.get('exclude', 0))
 
+    # Build label_index from relabel_index (index -> label)
     label_index = {}
-    for row in relabel_table.rows():
-        if row[0].val and str(row[0].val).isdigit():
-            label_index[int(row[0].val)] = row[1].val
-    replace_index = {row[0].val: row[1].val for row in replace_table.rows() if row[0].val}
+    for idx_str, label in relabel_index_data.items():
+        if idx_str.isdigit():
+            label_index[int(idx_str)] = label
+
+    # replace_index is already in correct format (find -> replace)
+    replace_index = replace_index_data
 
     # Get embedded operators from Opcomp parameter
-    parent_comp = installer_comp.parent()
-
-    # Use Opcomp parameter if available
     custom_operators_base = None
     if hasattr(installer_comp.par, 'Opcomp'):
         custom_operators_base = installer_comp.par.Opcomp.eval()
@@ -93,13 +82,10 @@ def onCook(scriptOp):
     # Get folder-based operators (from cache)
     folder_ops = []
 
-    # Get settings from settings table (in parent_comp / example_ops level)
-    settings = parent_comp.op('settings')
-    if not settings:
-        settings = installer_comp.op('settings')
-    ungrouped_label = settings['ungrouped_label', 1].val if settings and settings.row('ungrouped_label') else 'Other'
-    exclude_behavior = settings['exclude_behavior', 1].val if settings and settings.row('exclude_behavior') else 'hide'
-    show_ungrouped = settings['show_ungrouped', 1].val if settings and settings.row('show_ungrouped') else '1'
+    # Get settings from Config DependDict
+    ungrouped_label = settings_data.get('ungrouped_label', 'Other')
+    exclude_behavior = settings_data.get('exclude_behavior', 'hide')
+    show_ungrouped = settings_data.get('show_ungrouped', '1')
 
     # Read from Properties folder_cache - accessing creates cook dependency
     # When folder_cache changes, this scriptDAT will recook

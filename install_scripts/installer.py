@@ -68,7 +68,7 @@ class OpFamCreateExt:
 
         self.ownerComp = ownerComp
 
-        # Single source of truth for all family properties
+        # Single source of truth for family properties
         self.Properties = DependDict({
             'family_name': family_name,
             'color': list(color) if color else [0.5, 0.5, 0.5],
@@ -79,6 +79,15 @@ class OpFamCreateExt:
             'installed': False,
             'dynamic_refresh': dynamic_refresh,
             'compatible_types': compatible_types or [],
+        })
+
+        # Single source of truth for config (matches JSON import/export structure)
+        self.Config = DependDict({
+            'group_mapping': {},
+            'replace_index': {},
+            'os_incompatible': {},
+            'relabel_index': {},
+            'settings': {},
         })
 
         # Non-reactive config (not in Properties)
@@ -93,7 +102,13 @@ class OpFamCreateExt:
         self.config = ConfigManager(self)
         self.stubs = StubManager(self)
         self.updates = UpdateManager(self)
-        self.ui = UIInjector(self)
+        self.ui_injector = UIInjector(self)
+
+        # Ensure config tables exist with proper headers
+        self.config.ensure_tables_exist()
+
+        # Sync DAT tables to Config DependDict (populates Config from existing tables)
+        self.config.sync_tables_to_config()
 
         # Build initial cache if folder set
         if self.operators_folder and not self.dynamic_refresh:
@@ -187,7 +202,7 @@ class OpFamCreateExt:
         self.ownerComp.par.opshortcut = self.FamilyName.val
 
         if self.ownerComp.par.Install == 1:
-            if self.ui.is_installation_needed():
+            if self.ui_injector.is_installation_needed():
                 current_time = time.time()
                 if current_time - self.last_install_time >= self.install_cooldown:
                     self.Install()
@@ -202,13 +217,13 @@ class OpFamCreateExt:
         if self.operators_folder:
             self.file_loader.refresh_cache(self.operators_folder)
 
-        self.ui.install()
+        self.ui_injector.install()
         self._call_hook('_PostInstall')
 
     def Uninstall(self):
         """Uninstall the operator family from TouchDesigner's UI."""
         self._call_hook('_PreUninstall')
-        self.ui.uninstall()
+        self.ui_injector.uninstall()
         self._call_hook('_PostUninstall')
 
     def TagOperators(self, pattern='suffix'):

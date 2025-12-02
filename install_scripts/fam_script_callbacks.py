@@ -113,12 +113,12 @@ def cook(scriptOp):
             if 'name' not in [familyOps[0, c].val for c in range(familyOps.numCols)]:
                 continue
             
-            group_table = installer.parent().op('group_mapping')
+            group_table = installer.op('group_mapping')
             # print(f"\nGroup mapping table contents:")
             # print(group_table.text)
-            
+
             # Set up OS compatibility and exclude table
-            os_table = installer.parent().op('os_incompatible')
+            os_table = installer.op('os_incompatible')
             os_values = {}
             exclude_values = {}
             if os_table:
@@ -139,13 +139,15 @@ def cook(scriptOp):
                         exclude_values[op_name] = exclude_flag
 
             # Get exclude_behavior, show_ungrouped, and ungrouped_label from settings
-            settings = installer.parent().op('settings')
+            settings = installer.op('settings')
             exclude_behavior = settings['exclude_behavior', 1].val if settings and settings.row('exclude_behavior') else 'hide'
             show_ungrouped = settings['show_ungrouped', 1].val if settings and settings.row('show_ungrouped') else '1'
             ungrouped_label = settings['ungrouped_label', 1].val if settings and settings.row('ungrouped_label') else 'Other'
 
             # Create group index
             group_index = {}
+            if not group_table:
+                continue
             for col in range(group_table.numCols):
                 group_name = group_table[0, col].val
                 for row in range(1, group_table.numRows):
