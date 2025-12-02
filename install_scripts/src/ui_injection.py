@@ -94,6 +94,32 @@ class UIInjector:
         except:
             return 999  # Err on safe side
 
+    def _undo_install_callback(self, isUndo, info):
+        """
+        Callback to sync Install parameter on undo/redo of install.
+
+        Args:
+            isUndo: True if undoing, False if redoing
+            info: Dict with 'ownerComp' reference
+        """
+        owner = info.get('ownerComp')
+        if owner and hasattr(owner.par, 'Install'):
+            # On undo of install -> set to 0, on redo of install -> set to 1
+            owner.par.Install = 0 if isUndo else 1
+
+    def _undo_uninstall_callback(self, isUndo, info):
+        """
+        Callback to sync Install parameter on undo/redo of uninstall.
+
+        Args:
+            isUndo: True if undoing, False if redoing
+            info: Dict with 'ownerComp' reference
+        """
+        owner = info.get('ownerComp')
+        if owner and hasattr(owner.par, 'Install'):
+            # On undo of uninstall -> set to 1, on redo of uninstall -> set to 0
+            owner.par.Install = 1 if isUndo else 0
+
     def install(self):
         """
         Install the operator family into TouchDesigner's UI.
@@ -105,107 +131,121 @@ class UIInjector:
         - colors: Adds family color
         - compatible: Adds compatibility entries
         """
-        print(f"Installing {self.family_name}")
-        self.ownerComp.par.Install = 1
+        ui.undo.startBlock(f'Install {self.family_name} Operator Family')
+        try:
+            # Add callback to sync Install parameter on undo/redo
+            ui.undo.addCallback(self._undo_install_callback, {'ownerComp': self.ownerComp})
 
-        menuOp = op('/ui/dialogs/menu_op')
-        nodeTable = op('/ui/dialogs/menu_op/nodetable')
+            print(f"Installing {self.family_name}")
+            self.ownerComp.par.Install = 1
 
-        # 1. Create toggle button in bookmark_bar
-        self._create_toggle_button()
+            menuOp = op('/ui/dialogs/menu_op')
+            nodeTable = op('/ui/dialogs/menu_op/nodetable')
 
-        # 2. Create family insert DAT
-        self._create_family_insert(menuOp)
+            # 1. Create toggle button in bookmark_bar
+            self._create_toggle_button()
 
-        # 3. Update colors table
-        self._update_colors_table(menuOp)
+            # 2. Create family insert DAT
+            self._create_family_insert(menuOp)
 
-        # 4. Create/update set_last_node_type script
-        self._setup_last_node_type(menuOp)
+            # 3. Update colors table
+            self._update_colors_table(menuOp)
 
-        # 5. Modify launch_menu_op
-        self._modify_launch_menu(menuOp)
+            # 4. Create/update set_last_node_type script
+            self._setup_last_node_type(menuOp)
 
-        # 6. Set colors on installer children
-        self._set_child_colors()
+            # 5. Modify launch_menu_op
+            self._modify_launch_menu(menuOp)
 
-        # 7. Create inject script in nodetable
-        self._create_inject_script(nodeTable)
+            # 6. Set colors on installer children
+            self._set_child_colors()
 
-        # 8. Update eval4 expression
-        self._update_eval4(nodeTable)
+            # 7. Create inject script in nodetable
+            self._create_inject_script(nodeTable)
 
-        # 9. Modify create_node script
-        self._modify_create_node(menuOp)
+            # 8. Update eval4 expression
+            self._update_eval4(nodeTable)
 
-        # 10. Modify search panel exec
-        self._modify_search_exec(menuOp)
+            # 9. Modify create_node script
+            self._modify_create_node(menuOp)
 
-        # 11. Deploy fam_panel_execute
-        self._deploy_panel_execute(menuOp)
+            # 10. Modify search panel exec
+            self._modify_search_exec(menuOp)
 
-        # 12. Update compatible table
-        self._update_compatible_table(menuOp)
+            # 11. Deploy fam_panel_execute
+            self._deploy_panel_execute(menuOp)
 
-        print(f"{self.family_name} installation complete")
+            # 12. Update compatible table
+            self._update_compatible_table(menuOp)
+
+            print(f"{self.family_name} installation complete")
+        finally:
+            ui.undo.endBlock()
 
     def uninstall(self):
         """
         Uninstall the operator family from TouchDesigner's UI.
         """
-        print(f"Beginning uninstall of {self.family_name}")
-        self.ownerComp.par.Install = 0
+        ui.undo.startBlock(f'Uninstall {self.family_name} Operator Family')
+        try:
+            # Add callback to sync Install parameter on undo/redo
+            ui.undo.addCallback(self._undo_uninstall_callback, {'ownerComp': self.ownerComp})
 
-        menuOp = op('/ui/dialogs/menu_op')
-        nodeTable = op('/ui/dialogs/menu_op/nodetable')
+            print(f"Beginning uninstall of {self.family_name}")
+            self.ownerComp.par.Install = 0
 
-        # Remove family insert DAT
-        if menuOp.op(f'{self.family_name}_insert'):
-            menuOp.op(f'{self.family_name}_insert').destroy()
+            menuOp = op('/ui/dialogs/menu_op')
+            nodeTable = op('/ui/dialogs/menu_op/nodetable')
 
-        # Remove from colors table
-        colors_table = menuOp.op('colors')
-        if colors_table:
-            for i in range(colors_table.numRows):
-                if colors_table[i, 0].val == f"'{self.family_name}'":
-                    colors_table.deleteRow(i)
-                    break
+            # Remove family insert DAT
+            if menuOp.op(f'{self.family_name}_insert'):
+                menuOp.op(f'{self.family_name}_insert').destroy()
 
-        # Remove inject script
-        inject_op_name = f'inject_{self.family_name}_fam'
-        if nodeTable.op(inject_op_name):
-            nodeTable.op(inject_op_name).destroy()
+            # Remove from colors table
+            colors_table = menuOp.op('colors')
+            if colors_table:
+                for i in range(colors_table.numRows):
+                    if colors_table[i, 0].val == f"'{self.family_name}'":
+                        colors_table.deleteRow(i)
+                        break
 
-        families_op = nodeTable.op('families')
-        if families_op:
-            families_op.bypass = False
+            # Remove inject script
+            inject_op_name = f'inject_{self.family_name}_fam'
+            if nodeTable.op(inject_op_name):
+                nodeTable.op(inject_op_name).destroy()
 
-        # Remove panel execute
-        panel_execute_path = f'{self.family_name}_panel_execute'
-        if menuOp.op(panel_execute_path):
-            menuOp.op(panel_execute_path).destroy()
+            families_op = nodeTable.op('families')
+            if families_op:
+                families_op.bypass = False
 
-        # Only remove shared components if last family
-        if self.count_installed_families() <= 1:
-            launch_menu_op = menuOp.op('launch_menu_op')
-            if launch_menu_op:
-                code = launch_menu_op.text
-                key = "if($type != \"none\")\n\tcvar menu_type=$type\n\trun set_last_node_type\n\tset type = $lasttype"
-                replacement = 'if($type != "none")'
-                launch_menu_op.text = code.replace(key, replacement)
+            # Remove panel execute
+            panel_execute_path = f'{self.family_name}_panel_execute'
+            if menuOp.op(panel_execute_path):
+                menuOp.op(panel_execute_path).destroy()
 
-            if menuOp.op('set_last_node_type'):
-                menuOp.op('set_last_node_type').destroy()
+            # Only remove shared components if last family
+            if self.count_installed_families() <= 1:
+                launch_menu_op = menuOp.op('launch_menu_op')
+                if launch_menu_op:
+                    code = launch_menu_op.text
+                    key = "if($type != \"none\")\n\tcvar menu_type=$type\n\trun set_last_node_type\n\tset type = $lasttype"
+                    replacement = 'if($type != "none")'
+                    launch_menu_op.text = code.replace(key, replacement)
 
-        # Remove from compatible table
-        compatibleTable = menuOp.op('compatible')
-        if compatibleTable:
-            if compatibleTable.rows(self.family_name):
-                compatibleTable.deleteRow(self.family_name)
-            if compatibleTable.cols(self.family_name):
-                compatibleTable.deleteCol(self.family_name)
+                if menuOp.op('set_last_node_type'):
+                    menuOp.op('set_last_node_type').destroy()
 
-        print(f"{self.family_name} uninstallation complete")
+            # Remove from compatible table
+            compatibleTable = menuOp.op('compatible')
+            if compatibleTable:
+                if compatibleTable.rows(self.family_name):
+                    compatibleTable.deleteRow(self.family_name)
+                if compatibleTable.cols(self.family_name):
+                    compatibleTable.deleteCol(self.family_name)
+
+            print(f"{self.family_name} uninstallation complete")
+        finally:
+            ui.undo.endBlock()
 
     # ==================== Private Install Helpers ====================
 
@@ -287,11 +327,11 @@ class UIInjector:
         """Create/update set_last_node_type script."""
         setLastNodeType = menuOp.op('set_last_node_type')
         if not setLastNodeType:
-            template = self.ownerComp.op('set_last_node_type')
-            if template:
-                setLastNodeType = menuOp.copy(template)
-                setLastNodeType.nodeX = menuOp.op('launch_menu_op').nodeX - 200
-                setLastNodeType.nodeY = menuOp.op('launch_menu_op').nodeY
+            setLastNodeType = menuOp.create(textDAT, 'set_last_node_type')
+            launch_menu = menuOp.op('launch_menu_op')
+            if launch_menu:
+                setLastNodeType.nodeX = launch_menu.nodeX - 200
+                setLastNodeType.nodeY = launch_menu.nodeY
 
         # Update script content
         compatible_check = ' or '.join([f"menu_type=='{t}'" for t in self.compatible_types])
