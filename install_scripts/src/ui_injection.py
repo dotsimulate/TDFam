@@ -262,17 +262,32 @@ class UIInjector:
     # ==================== Private Install Helpers ====================
 
     def _get_or_create_ui_manager(self):
+    def _get_or_create_ui_manager(self, force=False, local_dev=False):
         """Get or create the central opFamUI manager."""
         # Check if already installed at global location
         ui_manager_path = '/ui/dialogs/mainmenu/opFamUI'
         ui_manager = op(ui_manager_path)
+        
+        internal = self.ownerComp.op('internal_pars')
+        if internal:
+            force = internal.par.Force.eval()
+            local_dev = internal.par.Dev.eval()
+
+        if (force or local_dev) and ui_manager:
+            ui_manager.destroy()
+            ui_manager = None
 
         if not ui_manager:
             # Copy from our template
             template = self.ownerComp.op('opFamUI')
+            
+            if local_dev:
+                template = self.ownerComp.op('opFamUI/opFamUI')
+
             if template:
                 mainmenu = op('/ui/dialogs/mainmenu')
                 if mainmenu:
+                    debug(f'copying {template.path} to {mainmenu.path}')
                     ui_manager = mainmenu.copy(template, name='opFamUI')
                     ui_manager.allowCooking = True
 
@@ -281,7 +296,12 @@ class UIInjector:
                     if emptypanel and ui_manager.inputCOMPConnectors:
                         ui_manager.inputCOMPConnectors[0].connect(emptypanel)
 
-        return ui_manager
+                    if local_dev:
+                        ui_manager.par.enable = True
+                        ui_manager.par.display = True
+                        ui_manager.par.selectpanel = self.ownerComp.op('opFamUI')
+
+        return ui_manager if not local_dev else self.ownerComp.op('opFamUI')
 
     def _register_with_ui_manager(self):
         """Register this family with the central opFamUI manager."""
