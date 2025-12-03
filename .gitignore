@@ -18,3 +18,7 @@ olib/
 TDImportCache/
 mapping/
 CrashAutoSave.*
+*.code-workspace
+*.dmg
+*.exe
+*.DS_Store
