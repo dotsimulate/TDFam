@@ -25,14 +25,6 @@ class UIInjector:
         self.installer = installer
         self.ownerComp = installer.ownerComp
         self.connection_map = installer.connection_map
-        # explicitly register with UI manager even if not installed yet
-        
-        run(lambda: self.postInit(), delayFrames = 1)
-
-    
-    def postInit(self):
-        """Post initialization callback."""
-        self._register_with_ui_manager()
 
     @property
     def family_name(self):
@@ -159,40 +151,39 @@ class UIInjector:
             menuOp = op('/ui/dialogs/menu_op')
             nodeTable = op('/ui/dialogs/menu_op/nodetable')
 
-            # 1. Register with central UI manager
-            # self._register_with_ui_manager() # NOTE: this is done on init now
+            # Register with central UI manager
 
-            # 2. Create family insert DAT
+            # Create family insert DAT
             self._create_family_insert(menuOp)
 
-            # 3. Update colors table
+            # Update colors table
             self._update_colors_table(menuOp)
 
-            # 4. Create/update set_last_node_type script
+            # Create/update set_last_node_type script
             self._setup_last_node_type(menuOp)
 
-            # 5. Modify launch_menu_op
+            # Modify launch_menu_op
             self._modify_launch_menu(menuOp)
 
-            # 6. Set colors on installer children
+            # Set colors on installer children
             self._set_child_colors()
 
-            # 7. Create inject script in nodetable
+            # Create inject script in nodetable
             self._create_inject_script(nodeTable)
 
-            # 8. Update eval4 expression
+            # Update eval4 expression
             self._update_eval4(nodeTable)
 
-            # 9. Modify create_node script
+            # Modify create_node script
             self._modify_create_node(menuOp)
 
-            # 10. Modify search panel exec
+            # Modify search panel exec
             self._modify_search_exec(menuOp)
 
-            # 11. Deploy fam_panel_execute
+            # Deploy fam_panel_execute
             self._deploy_panel_execute(menuOp)
 
-            # 12. Update compatible table
+            # Update compatible table
             self._update_compatible_table(menuOp)
 
             print(f"{self.family_name} installation complete")
@@ -271,9 +262,9 @@ class UIInjector:
     # ==================== Private Install Helpers ====================
 
     def _get_or_create_ui_manager(self, force=False):
-        """Get or create the central opFamUI manager."""
+        """Get or create the central OpFamUI manager."""
         # Check if already installed at global location
-        ui_manager_path = '/ui/dialogs/mainmenu/opFamUI'
+        ui_manager_path = '/ui/dialogs/mainmenu/OpFamUI'
         ui_manager = op(ui_manager_path)
         
         internal = self.ownerComp.op('internal_pars')
@@ -289,16 +280,16 @@ class UIInjector:
 
         if not ui_manager:
             # Copy from our template
-            template = self.ownerComp.op('opFamUI')
+            template = self.ownerComp.op('OpFamUI')
             
             if local_dev:
-                template = self.ownerComp.op('opFamUI/opFamUI')
+                template = self.ownerComp.op('OpFamUI/OpFamUI')
 
             if template:
                 mainmenu = op('/ui/dialogs/mainmenu')
                 if mainmenu:
                     debug(f'copying {template.path} to {mainmenu.path}')
-                    ui_manager = mainmenu.copy(template, name='opFamUI')
+                    ui_manager = mainmenu.copy(template, name='OpFamUI')
                     ui_manager.allowCooking = True
 
                     # Wire up to emptypanel in mainmenu
@@ -309,21 +300,9 @@ class UIInjector:
                     if local_dev:
                         ui_manager.par.enable = True
                         ui_manager.par.display = True
-                        ui_manager.par.selectpanel = self.ownerComp.op('opFamUI')
+                        ui_manager.par.selectpanel = self.ownerComp.op('OpFamUI')
 
-        return ui_manager if not local_dev else self.ownerComp.op('opFamUI')
-
-    def _register_with_ui_manager(self):
-        """Register this family with the central opFamUI manager."""
-        ui_manager = self._get_or_create_ui_manager()
-        if ui_manager and hasattr(ui_manager, 'RegisterFamily'):
-            ui_manager.RegisterFamily(self.ownerComp)
-
-    def _unregister_from_ui_manager(self):
-        """Unregister this family from the central opFamUI manager."""
-        ui_manager = self._get_or_create_ui_manager()
-        if ui_manager and hasattr(ui_manager, 'UnregisterFamily'):
-            ui_manager.UnregisterFamily(self.family_name)
+        return ui_manager if not local_dev else self.ownerComp.op('OpFamUI')
 
     def _create_family_insert(self, menuOp):
         """Create family insert DAT in menu_op."""
@@ -679,10 +658,10 @@ elif(source == 'input' and ({compatible_check})):
         if not menuOp:
             return
 
-        # 1. Update registration in central UI manager
-        ui_manager = op('/ui/dialogs/mainmenu/opFamUI')
-        if ui_manager and hasattr(ui_manager, 'UpdateFamilyName'):
-            ui_manager.UpdateFamilyName(old_name, new_name)
+        # 1. Update in central registry 
+        # # TODO: should not be done here since it's not UI related only
+        ui_manager = self.installer.fam_registry
+        ui_manager.UpdateFamilyName(old_name, new_name)
 
         # 2. Rename family insert DAT
         old_insert = menuOp.op(f'{old_name}_insert')

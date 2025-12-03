@@ -17,7 +17,7 @@ Usage:
 
 MIT License - Based on work by Josef Pelz
 """
-
+from __future__ import annotations
 import time
 from TDStoreTools import DependDict
 
@@ -26,7 +26,6 @@ ConfigManager = mod('src/config_system').ConfigManager
 StubManager = mod('src/stub_system').StubManager
 UpdateManager = mod('src/update_system').UpdateManager
 UIInjector = mod('src/ui_injection').UIInjector
-FamManager = mod('src/fam_manager').FamManager
 
 
 class OpFamCreateExt:
@@ -104,7 +103,13 @@ class OpFamCreateExt:
         self.stubs = StubManager(self)
         self.updates = UpdateManager(self)
         self.ui_injector = UIInjector(self)
-        self.fam_manager = FamManager(self)
+        
+        try:
+            self.fam_registry : OpFamRegistryExt = self._get_or_create_fam_registry()
+            if not self.fam_registry:
+                raise Exception("Failed to create or get fam registry")
+        except Exception as e:
+            print(f"Failed to create or get fam registry: {e}")
 
         # Ensure config tables exist with proper headers
         self.config.ensure_tables_exist()
@@ -119,6 +124,14 @@ class OpFamCreateExt:
         # Debouncing for recursive installation prevention
         self.last_install_time = 0
         self.install_cooldown = 2.0
+
+        # Run post init actions
+        run(lambda: self.postInit(), delayFrames=1)
+
+
+    def postInit(self):
+        if self.fam_registry:
+            self.fam_registry.RegisterFamily(self.ownerComp)
 
         # Check for existing installers and set up
         self._initialize_installer()
@@ -218,6 +231,37 @@ class OpFamCreateExt:
                 if current_time - self.last_install_time >= self.install_cooldown:
                     self.Install()
 
+    def _get_or_create_fam_registry(self, force=False):
+        """Get or create the core system fam registry."""
+        # Check if already installed at global location
+        sys_registry_path = '/sys/OpFamRegistry'
+        sys_registry = op(sys_registry_path)
+        
+        internal = self.ownerComp.op('internal_pars')
+        if internal and not force: # caller's force takes precedence
+            force = internal.par.Force.eval()
+
+        if force and sys_registry:
+            sys_registry.destroy()
+            sys_registry = None
+
+        if not sys_registry:
+            # Copy from our template
+            template = self.ownerComp.op('OpFamRegistry')
+
+            if template:
+                sys = op('/sys')
+                if sys:
+                    sys_registry = sys.copy(template, name='OpFamRegistry')
+                    sys_registry.allowCooking = True
+                    sys_registry.nodeX = sys.op('TDDialogs').nodeX
+                    sys_registry.nodeY = sys.op('TDDialogs').nodeY - 200
+
+        if sys_registry:
+            sys_registry.par.opshortcut = 'FAMREGISTRY'
+
+        return sys_registry
+
     # ==================== Public API ====================
 
     def Install(self):
@@ -227,15 +271,15 @@ class OpFamCreateExt:
 
         if self.operators_folder:
             self.file_loader.refresh_cache(self.operators_folder)
-        self.fam_manager.install()
         self.ui_injector.install()
+        self.fam_registry.InstallFamily(self.ownerComp)
         self._call_hook('_PostInstall')
 
     def Uninstall(self):
         """Uninstall the operator family from TouchDesigner's UI."""
         self._call_hook('_PreUninstall')
         self.ui_injector.uninstall()
-        self.fam_manager.uninstall()
+        self.fam_registry.UninstallFamily(self.ownerComp)
         self._call_hook('_PostUninstall')
 
     def TagOperators(self, pattern='suffix'):
