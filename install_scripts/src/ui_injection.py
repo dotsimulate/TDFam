@@ -46,6 +46,20 @@ class UIInjector:
         """Get compatible types from Properties registry."""
         return self.installer.Properties['compatible_types']
 
+    @property
+    def shortcut_comp(self):
+        """Get the component that receives the op shortcut (from installer)."""
+        return self.installer.shortcut_comp
+
+    @property
+    def installer_expr(self):
+        """Get expression path to installer (from installer)."""
+        return self.installer.get_installer_expr(self.family_name)
+
+    def _build_installer_expr(self, fam_name):
+        """Build expression path for a given family name."""
+        return self.installer.get_installer_expr(fam_name)
+
     def is_installation_needed(self):
         """
         Check if installation is needed.
@@ -293,7 +307,7 @@ class UIInjector:
         default_index = 10
         if hasattr(self.ownerComp.par, 'Index'):
             default_index = self.ownerComp.par.Index.eval()
-            familyInsert.par.index.expr = f'op.{self.family_name}.par.Index'
+            familyInsert.par.index.expr = f'{self.installer_expr}.par.Index'
         else:
             familyInsert.par.index = default_index
 
@@ -413,7 +427,7 @@ elif(source == 'input' and ({compatible_check})):
 
         original_input = families_op.inputs[0] if families_op.inputs else None
         inject_op = nodeTable.copy(families_op, name=inject_op_name, includeDocked=True)
-        inject_op.par.callbacks.expr = f"op.{self.family_name}.op('fam_script_callbacks')"
+        inject_op.par.callbacks.expr = f"{self.installer_expr}.op('fam_script_callbacks')"
         inject_op.nodeX = families_op.nodeX + 150
         inject_op.nodeY = families_op.nodeY
 
@@ -623,8 +637,8 @@ elif(source == 'input' and ({compatible_check})):
         # Update Properties registry
         self.installer.Properties['family_name'] = new_name
 
-        # Update op shortcut
-        self.ownerComp.par.opshortcut = new_name
+        # Update op shortcut on the correct component
+        self.shortcut_comp.par.opshortcut = new_name
 
         # If not installed, nothing else to update
         if not self.ownerComp.par.Install.eval():
@@ -646,7 +660,7 @@ elif(source == 'input' and ({compatible_check})):
             old_insert.name = f'{new_name}_insert'
             old_insert.par.contents = new_name
             if hasattr(self.ownerComp.par, 'Index'):
-                old_insert.par.index.expr = f'op.{new_name}.par.Index'
+                old_insert.par.index.expr = f'{self._build_installer_expr(new_name)}.par.Index'
 
         # 3. Update colors table
         colors_table = menuOp.op('colors')
@@ -667,7 +681,7 @@ elif(source == 'input' and ({compatible_check})):
         old_inject = nodeTable.op(f'inject_{old_name}_fam')
         if old_inject:
             old_inject.name = f'inject_{new_name}_fam'
-            old_inject.par.callbacks.expr = f"op.{new_name}.op('fam_script_callbacks')"
+            old_inject.par.callbacks.expr = f"{self._build_installer_expr(new_name)}.op('fam_script_callbacks')"
 
         # 6. Update eval4 expression
         eval4 = nodeTable.op('eval4')

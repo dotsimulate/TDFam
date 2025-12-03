@@ -117,6 +117,48 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         """Set menu index in Properties registry."""
         self.Properties['index'] = int(value)
 
+    # ==================== Shortcut Configuration ====================
+
+    @property
+    def shortcut_mode(self):
+        """Get Shortcutcomp parameter value (strmenu: me, parent(), parent(2))."""
+        if hasattr(self._installer.par, 'Shortcutcomp'):
+            return self._installer.par.Shortcutcomp.eval()
+        return 'me'
+
+    @property
+    def shortcut_comp(self):
+        """Get the component that receives the op shortcut based on Shortcutcomp parameter."""
+        mode = self.shortcut_mode
+        if mode == 'me':
+            return self.ownerComp
+        elif mode == 'parent()':
+            return self.ownerComp.parent()
+        elif mode == 'parent(2)':
+            return self.ownerComp.parent().parent()
+        return self.ownerComp
+
+    def get_installer_expr(self, fam_name):
+        """
+        Build expression path from shortcut target back to installer.
+
+        Args:
+            fam_name: Family name to use in expression
+
+        Returns:
+            Expression string like 'op.{family}' or 'op.{family}.op('{installer}')'
+        """
+        mode = self.shortcut_mode
+
+        if mode == 'me':
+            return f'op.{fam_name}'
+        elif mode == 'parent()':
+            return f"op.{fam_name}.op('{self.ownerComp.name}')"
+        elif mode == 'parent(2)':
+            parent_name = self.ownerComp.parent().name
+            return f"op.{fam_name}.op('{parent_name}').op('{self.ownerComp.name}')"
+        return f'op.{fam_name}'
+
     # ==================== Hook Integration (private) ====================
 
     def _PreInstall(self):

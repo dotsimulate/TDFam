@@ -31,7 +31,8 @@ def cook(scriptOp):
     # and this DAT's parent is the installer (install_scripts)
     callbacks_dat = scriptOp.par.callbacks.eval()
     installer = callbacks_dat.parent() if callbacks_dat else None
-    our_family = installer.par.opshortcut.eval() if installer else ''
+    # Use Family parameter (always on installer) not opshortcut (may be on parent)
+    our_family = installer.par.Family.eval() if installer else ''
 
     # Find the original families operator and nodetable
     families_op = op('/ui/dialogs/menu_op/nodetable/families')

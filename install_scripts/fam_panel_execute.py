@@ -13,8 +13,20 @@ def _get_family():
 	return me.name.rsplit('_panel_execute', 1)[0]
 
 def _get_installer():
-	"""Get the installer component for this family."""
-	return getattr(op, _get_family())
+	"""Get the installer component for this family.
+
+	Uses inject script's callbacks parameter to find actual installer,
+	since op.{family} may point to a parent component (Shortcutcomp mode).
+	"""
+	family = _get_family()
+	# Use inject script's callbacks to find actual installer
+	inject_script = parent.OPCREATE.op(f'nodetable/inject_{family}_fam')
+	if inject_script:
+		callbacks_dat = inject_script.par.callbacks.eval()
+		if callbacks_dat:
+			return callbacks_dat.parent()
+	# Fallback to direct shortcut for backwards compatibility
+	return getattr(op, family, None)
 
 def onOffToOn(panelValue):
 	return
@@ -41,8 +53,7 @@ def onValueChange(panelValue, prev):
 
     # Use the inject script output (sorted/displayed table) instead of raw OP_fam
     # The inject script applies sorting from fam_script_callbacks.py
-    family_name = installer.par.opshortcut.eval()
-    inject_script = parent.OPCREATE.op(f'nodetable/inject_{family_name}_fam')
+    inject_script = parent.OPCREATE.op(f'nodetable/inject_{family}_fam')
     if not inject_script:
         # Fallback to raw OP_fam if inject not found
         inject_script = installer.op('OP_fam')

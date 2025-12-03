@@ -183,6 +183,15 @@ class OpFamCreateExt:
         """Get folder cache dependency for expressions."""
         return self.Properties.getDependency('folder_cache')
 
+    @property
+    def shortcut_comp(self):
+        """Get the component that receives the op shortcut. Override in extension."""
+        return self.ownerComp
+
+    def get_installer_expr(self, fam_name):
+        """Build expression path to installer. Override in extension for custom behavior."""
+        return f'op.{fam_name}'
+
     def _initialize_installer(self):
         """Initialize installer position and check for duplicates."""
         # Check if global shortcut already exists and points to ANOTHER component
@@ -199,7 +208,7 @@ class OpFamCreateExt:
         self.ownerComp.expose = self.expose
         self.ownerComp.nodeX = self.node_x
         self.ownerComp.nodeY = self.node_y
-        self.ownerComp.par.opshortcut = self.FamilyName.val
+        self.shortcut_comp.par.opshortcut = self.FamilyName.val
 
         if self.ownerComp.par.Install == 1:
             if self.ui_injector.is_installation_needed():
