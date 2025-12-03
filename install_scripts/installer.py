@@ -26,6 +26,7 @@ ConfigManager = mod('src/config_system').ConfigManager
 StubManager = mod('src/stub_system').StubManager
 UpdateManager = mod('src/update_system').UpdateManager
 UIInjector = mod('src/ui_injection').UIInjector
+FamManager = mod('src/fam_manager').FamManager
 
 
 class OpFamCreateExt:
@@ -103,6 +104,7 @@ class OpFamCreateExt:
         self.stubs = StubManager(self)
         self.updates = UpdateManager(self)
         self.ui_injector = UIInjector(self)
+        self.fam_manager = FamManager(self)
 
         # Ensure config tables exist with proper headers
         self.config.ensure_tables_exist()
@@ -225,7 +227,7 @@ class OpFamCreateExt:
 
         if self.operators_folder:
             self.file_loader.refresh_cache(self.operators_folder)
-
+        self.fam_manager.install()
         self.ui_injector.install()
         self._call_hook('_PostInstall')
 
@@ -233,6 +235,7 @@ class OpFamCreateExt:
         """Uninstall the operator family from TouchDesigner's UI."""
         self._call_hook('_PreUninstall')
         self.ui_injector.uninstall()
+        self.fam_manager.uninstall()
         self._call_hook('_PostUninstall')
 
     def TagOperators(self, pattern='suffix'):

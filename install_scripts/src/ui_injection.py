@@ -25,6 +25,14 @@ class UIInjector:
         self.installer = installer
         self.ownerComp = installer.ownerComp
         self.connection_map = installer.connection_map
+        # explicitly register with UI manager even if not installed yet
+        
+        run(lambda: self.postInit(), delayFrames = 1)
+
+    
+    def postInit(self):
+        """Post initialization callback."""
+        self._register_with_ui_manager()
 
     @property
     def family_name(self):
@@ -152,7 +160,7 @@ class UIInjector:
             nodeTable = op('/ui/dialogs/menu_op/nodetable')
 
             # 1. Register with central UI manager
-            self._register_with_ui_manager()
+            # self._register_with_ui_manager() # NOTE: this is done on init now
 
             # 2. Create family insert DAT
             self._create_family_insert(menuOp)
@@ -203,8 +211,9 @@ class UIInjector:
             print(f"Beginning uninstall of {self.family_name}")
             self.ownerComp.par.Install = 0
 
-            # Unregister from central UI manager
-            self._unregister_from_ui_manager()
+            # -Unregister from central UI manager-
+            # ! Do not unregister from GUI (top right button), this is managed by event system
+            # self._unregister_from_ui_manager() 
 
             menuOp = op('/ui/dialogs/menu_op')
             nodeTable = op('/ui/dialogs/menu_op/nodetable')
@@ -261,8 +270,7 @@ class UIInjector:
 
     # ==================== Private Install Helpers ====================
 
-    def _get_or_create_ui_manager(self):
-    def _get_or_create_ui_manager(self, force=False, local_dev=False):
+    def _get_or_create_ui_manager(self, force=False):
         """Get or create the central opFamUI manager."""
         # Check if already installed at global location
         ui_manager_path = '/ui/dialogs/mainmenu/opFamUI'
@@ -270,8 +278,10 @@ class UIInjector:
         
         internal = self.ownerComp.op('internal_pars')
         if internal:
-            force = internal.par.Force.eval()
+            force = force or internal.par.Force.eval() # callers force takes precedence
             local_dev = internal.par.Dev.eval()
+        else:
+            local_dev = False
 
         if (force or local_dev) and ui_manager:
             ui_manager.destroy()
@@ -311,7 +321,7 @@ class UIInjector:
 
     def _unregister_from_ui_manager(self):
         """Unregister this family from the central opFamUI manager."""
-        ui_manager = op('/ui/dialogs/mainmenu/opFamUI')
+        ui_manager = self._get_or_create_ui_manager()
         if ui_manager and hasattr(ui_manager, 'UnregisterFamily'):
             ui_manager.UnregisterFamily(self.family_name)
 

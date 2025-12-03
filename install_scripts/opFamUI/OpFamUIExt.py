@@ -1,7 +1,7 @@
 '''Info Header Start
 Name : OpFamUIExt
 Author : root
-Saveorigin : opfam-create_dev.28.toe
+Saveorigin : opfam-create_dev.43.toe
 Saveversion : 2023.12370
 Info Header End'''
 
@@ -18,13 +18,14 @@ class OpFamUIExt:
 		self.parameters_ui = self.ownerComp.op('fam_menu/parameter1')
 		self.RegisteredFams = DependDict()
 		self.window = self.ownerComp.op('window1')
-
-		# TODO: testing
-		# self.RegisteredFams.setItem('TEST', self.ownerComp.op('TEST'))
 		
+# region local registry
+
 	def RegisterFamily(self, family_owner):
 		# TODO: error handling
-		fam_name = family_owner.par.Family.eval()
+		if family_owner.Properties['family_name'] in self.RegisteredFams:
+			return
+		fam_name = family_owner.Properties['family_name']
 		self.RegisteredFams.setItem(fam_name, family_owner)
 
 	def UnregisterFamily(self, fam_name):
@@ -36,6 +37,24 @@ class OpFamUIExt:
 			family_owner = self.RegisteredFams[old_name]
 			del self.RegisteredFams[old_name]
 			self.RegisteredFams.setItem(new_name, family_owner)
+
+# endregion local registry
+
+# region Registry callbacks
+	
+	def onRegistryRegisteredFamily(self, fam_name, family_owner):
+		# even though we should have already registered the family on init, we do it just in case on install
+		self.RegisterFamily(family_owner)
+
+	def onRegistryUnregisteredFamily(self, fam_name):
+		return
+
+	def onExistingFamiliesChanged(self, current):
+		pass
+
+# endregion Registry callbacks
+
+# region UI callbacks
 
 	def onFamilyTabSelected(self, fam_name):
 		self.parameters_ui.par.op = self.RegisteredFams.get(fam_name)
@@ -50,6 +69,8 @@ class OpFamUIExt:
 			pass
 		if panelValue.name == 'mstate':
 			pass
+
+# endregion UI callbacks
 
 
 
