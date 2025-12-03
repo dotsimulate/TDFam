@@ -261,7 +261,6 @@ class UIInjector:
 
     # ==================== Private Install Helpers ====================
 
-    def _get_or_create_ui_manager(self):
     def _get_or_create_ui_manager(self, force=False, local_dev=False):
         """Get or create the central opFamUI manager."""
         # Check if already installed at global location
