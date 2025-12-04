@@ -106,7 +106,9 @@ class OpFamCreateExt:
         
         try:
             self.fam_registry : OpFamRegistryExt = self._get_or_create_fam_registry()
-            if not self.fam_registry:
+            if self.fam_registry:
+                self.ui_injector.get_or_create_ui_manager()
+            else:
                 raise Exception("Failed to create or get fam registry")
         except Exception as e:
             print(f"Failed to create or get fam registry: {e}")

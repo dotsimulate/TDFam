@@ -119,9 +119,6 @@ class UIInjector:
         menuOp = op('/ui/dialogs/menu_op')
         nodeTable = op('/ui/dialogs/menu_op/nodetable')
 
-        # Get or create UI manager
-        self._get_or_create_ui_manager()
-
         # Create family insert DAT
         self._create_family_insert(menuOp)
 
@@ -215,9 +212,7 @@ class UIInjector:
 
         print(f"{self.family_name} uninstallation complete")
 
-    # ==================== Private Install Helpers ====================
-
-    def _get_or_create_ui_manager(self, force=False):
+    def get_or_create_ui_manager(self, force=False):
         """Get or create the central OpFamUI manager."""
         # Check if already installed at global location
         ui_manager_path = '/ui/dialogs/mainmenu/OpFamUI'
@@ -244,7 +239,6 @@ class UIInjector:
             if template:
                 mainmenu = op('/ui/dialogs/mainmenu')
                 if mainmenu:
-                    debug(f'copying {template.path} to {mainmenu.path}')
                     ui_manager = mainmenu.copy(template, name='OpFamUI')
                     ui_manager.allowCooking = True
 
@@ -259,6 +253,8 @@ class UIInjector:
                         ui_manager.par.selectpanel = self.ownerComp.op('OpFamUI')
 
         return ui_manager if not local_dev else self.ownerComp.op('OpFamUI')
+
+    # ==================== Private Install Helpers ====================
 
     def _create_family_insert(self, menuOp):
         """Create family insert DAT in menu_op."""
