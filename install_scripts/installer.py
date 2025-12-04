@@ -103,15 +103,6 @@ class OpFamCreateExt:
         self.stubs = StubManager(self)
         self.updates = UpdateManager(self)
         self.ui_injector = UIInjector(self)
-        
-        try:
-            self.fam_registry : OpFamRegistryExt = self._get_or_create_fam_registry()
-            if self.fam_registry:
-                self.ui_injector.get_or_create_ui_manager()
-            else:
-                raise Exception("Failed to create or get fam registry")
-        except Exception as e:
-            print(f"Failed to create or get fam registry: {e}")
 
         # Ensure config tables exist with proper headers
         self.config.ensure_tables_exist()
@@ -127,11 +118,22 @@ class OpFamCreateExt:
         self.last_install_time = 0
         self.install_cooldown = 2.0
 
+        self.fam_registry = None
+
         # Run post init actions
-        run(lambda: self.postInit(), delayFrames=1)
+        run(lambda: self.postInitInstaller(), endFrame=True, delayRef=op.TDResources)
 
 
-    def postInit(self):
+    def postInitInstaller(self):
+        try:
+            self.fam_registry : OpFamRegistryExt = self._get_or_create_fam_registry()
+            if self.fam_registry:
+                self.ui_injector.get_or_create_ui_manager()
+            else:
+                raise Exception("Failed to create or get fam registry")
+        except Exception as e:
+            print(f"Failed to create or get fam registry: {e}")
+
         if self.fam_registry:
             self.fam_registry.RegisterFamily(self.ownerComp)
 
@@ -243,7 +245,12 @@ class OpFamCreateExt:
         if internal and not force: # caller's force takes precedence
             force = internal.par.Force.eval()
 
+        previous_registered_fams = {}
+        previous_installed_fams = {}
         if force and sys_registry:
+            # get previous registry elements to be readded later
+            previous_registered_fams = sys_registry.RegisteredFams
+            previous_installed_fams = sys_registry.InstalledFams
             sys_registry.destroy()
             sys_registry = None
 
@@ -261,7 +268,11 @@ class OpFamCreateExt:
 
         if sys_registry:
             sys_registry.par.opshortcut = 'FAMREGISTRY'
-
+            for family in previous_registered_fams.values():
+                sys_registry.RegisterFamily(family)
+            for family in previous_installed_fams.values():
+                sys_registry.InstallFamily(family)
+            
         return sys_registry
 
     # ==================== Public API ====================

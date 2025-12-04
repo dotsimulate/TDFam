@@ -82,7 +82,7 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
             if self.operators_folder and not self.dynamic_refresh:
                 self.file_loader.refresh_cache(self.operators_folder)
 
-        run(lambda: self.postInit(), delayFrames = 1)
+        run(lambda: self.postInit(), delayFrames = 2)
 
     def postInit(self):
         self.Install()
