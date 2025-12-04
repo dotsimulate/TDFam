@@ -151,7 +151,8 @@ class UIInjector:
             menuOp = op('/ui/dialogs/menu_op')
             nodeTable = op('/ui/dialogs/menu_op/nodetable')
 
-            # Register with central UI manager
+            # Get or create UI manager
+            self._get_or_create_ui_manager()
 
             # Create family insert DAT
             self._create_family_insert(menuOp)

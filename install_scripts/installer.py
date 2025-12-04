@@ -271,8 +271,8 @@ class OpFamCreateExt:
 
         if self.operators_folder:
             self.file_loader.refresh_cache(self.operators_folder)
-        self.ui_injector.install()
         self.fam_registry.InstallFamily(self.ownerComp)
+        self.ui_injector.install()
         self._call_hook('_PostInstall')
 
     def Uninstall(self):

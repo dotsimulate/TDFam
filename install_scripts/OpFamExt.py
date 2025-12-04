@@ -82,6 +82,11 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
             if self.operators_folder and not self.dynamic_refresh:
                 self.file_loader.refresh_cache(self.operators_folder)
 
+        run(lambda: self.postInit(), delayFrames = 1)
+
+    def postInit(self):
+        self.Install()
+
     def _sync_parameters(self):
         """Read parameters and update Properties registry."""
         inst = self._installer
