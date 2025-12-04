@@ -44,7 +44,7 @@ class OpFamRegistryExt:
 		# send event if indeed renamed
 		if old_name in self.RegisteredFams or old_name in self.InstalledFams:
 			family_owner = self.RegisteredFams.get(old_name) or self.InstalledFams.get(old_name)
-			self.EventEmitter.Emit('FamilyRenamed', old_name, new_name)
+			self.EventEmitter.Emit('FamilyRenamed', old_name, new_name, family_owner)
 			debug(f'Family renamed: {old_name} -> {new_name}')
 
 		if old_name in self.RegisteredFams:
