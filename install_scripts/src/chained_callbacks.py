@@ -13,6 +13,37 @@ class ChainedCallbacksExt(CallbacksExt):
     This version chains them: assigned runs first, DAT gets final say.
     """
 
+    def CreateCallbackDat(self, owner, template):
+        """
+        Create a callbacks DAT from template if not already set.
+
+        Args:
+            owner: The component to dock the callbacks to
+            template: The template DAT to copy
+
+        Returns:
+            The created callbacks DAT, or None if already exists
+        """
+        if self.callbackDat:
+            return None
+
+        if not template:
+            return None
+
+        # Copy to sibling level
+        parent_comp = owner.parent()
+        callbacks_name = f'{owner.name}_callbacks'
+        callbacks_dat = parent_comp.copy(template, name=callbacks_name)
+
+        # Position underneath owner
+        callbacks_dat.nodeX = owner.nodeX
+        callbacks_dat.nodeY = owner.nodeY - 150
+
+        # Dock to owner
+        callbacks_dat.dock = owner
+
+        return callbacks_dat
+
     def DoCallback(self, callbackName, callbackInfo=None):
         """
         Execute a chained callback - calls BOTH assigned callback and DAT callback.

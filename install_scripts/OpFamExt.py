@@ -469,3 +469,19 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         if pattern is None:
             pattern = 'suffix'
         return super().TagOperators(pattern)
+
+    def Createcallbacks(self):
+        """
+        Create a callbacks DAT from template if not already set.
+        Sets the Callbackdat parameter to the created DAT.
+
+        Returns:
+            The created callbacks DAT, or None if already exists
+        """
+        template = self._installer.op('callback_template')
+        callbacks_dat = self.CreateCallbackDat(self._installer, template)
+
+        if callbacks_dat:
+            self._installer.par.Callbackdat = callbacks_dat
+
+        return callbacks_dat
