@@ -362,7 +362,8 @@ elif(source == 'input' and ({compatible_check})):
             color_val = color_val + [1.0] * (4 - len(color_val))
 
         for o in self.ownerComp.findChildren():
-            if 'License' not in o.name and o.OPType != 'annotateCOMP':
+            # Skip License components and annotateCOMPs (network comments)
+            if 'License' not in o.name and 'annotate' not in o.OPType.lower():
                 try:
                     o.color = color_val
                 except:
@@ -446,22 +447,30 @@ elif(source == 'input' and ({compatible_check})):
         if not searchExec:
             return
 
-        if self.family_name in searchExec.text:
-            return
+        import re
 
-        key = "if parent.OPCREATE.op('nodetable/destil').numRows > 1:\n"
-        unique_id = -abs(hash(self.family_name) % 10000)
-        insert_code = (
+        # Check if this family already has injected code - if so, update it
+        pattern = rf"\t\t\tif\(op\('/ui/dialogs/menu_op/current'\)\[0,0\]\.val=='{self.family_name}'\):\n\t\t\t\tparent\.OPCREATE\.op\('nodetable'\)\.clickID\(-?\d+\)\n\t\t\t\treturn\n"
+
+        new_code = (
             f"\t\t\tif(op('/ui/dialogs/menu_op/current')[0,0].val=='{self.family_name}'):\n"
-            f"\t\t\t\tparent.OPCREATE.op('nodetable').clickID({unique_id})\n"
+            f"\t\t\t\tparent.OPCREATE.op('nodetable').clickID(-8358)\n"  # ENTER key value
             f"\t\t\t\treturn\n"
         )
+
+        if re.search(pattern, searchExec.text):
+            # Replace existing injection with updated code
+            searchExec.text = re.sub(pattern, new_code, searchExec.text)
+            return
+
+        # First time install - insert new code
+        key = "if parent.OPCREATE.op('nodetable/destil').numRows > 1:\n"
 
         try:
             index = searchExec.text.index(key)
             searchExec.text = (
                 searchExec.text[:index + len(key)]
-                + insert_code
+                + new_code
                 + searchExec.text[index + len(key):]
             )
         except ValueError:
@@ -579,9 +588,10 @@ elif(source == 'input' and ({compatible_check})):
         if custom_ops:
             # Update the Opcomp container itself
             custom_ops.color = color_tuple
-            # Update all operators inside
+            # Update all operators inside (excluding annotate operators)
             for comp in custom_ops.findChildren(type=COMP, maxDepth=1):
-                comp.color = color_tuple
+                if 'annotate' not in comp.OPType.lower():
+                    comp.color = color_tuple
 
         self.ownerComp.color = color_tuple
 
