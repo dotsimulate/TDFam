@@ -433,6 +433,18 @@ class ConfigManager:
 
         return (True, f"Imported config from {source_desc}")
 
+    def _to_plain_dict(self, obj):
+        """Recursively convert DependDict and other dict-like objects to plain dicts."""
+        if hasattr(obj, 'getRaw'):
+            # DependDict - get raw dict
+            obj = obj.getRaw()
+        if isinstance(obj, dict):
+            return {k: self._to_plain_dict(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self._to_plain_dict(item) for item in obj]
+        else:
+            return obj
+
     def export_config(self, path=None):
         """
         Export config from DependDict to JSON.
@@ -448,12 +460,12 @@ class ConfigManager:
         config = self.installer.Config
         export_data = {
             "tables": {
-                "group_mapping": config['group_mapping'],
-                "replace_index": config['replace_index'],
-                "os_incompatible": config['os_incompatible'],
-                "relabel_index": config['relabel_index']
+                "group_mapping": self._to_plain_dict(config['group_mapping']),
+                "replace_index": self._to_plain_dict(config['replace_index']),
+                "os_incompatible": self._to_plain_dict(config['os_incompatible']),
+                "relabel_index": self._to_plain_dict(config['relabel_index'])
             },
-            "settings": config['settings']
+            "settings": self._to_plain_dict(config['settings'])
         }
 
         if path is None:

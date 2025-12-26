@@ -363,7 +363,7 @@ elif(source == 'input' and ({compatible_check})):
 
         for o in self.ownerComp.findChildren():
             # Skip License components and annotateCOMPs (network comments)
-            if 'License' not in o.name and 'annotate' not in o.OPType.lower():
+            if 'License' not in o.name and o.OPType != 'annotateCOMP':
                 try:
                     o.color = color_val
                 except:
@@ -590,7 +590,7 @@ elif(source == 'input' and ({compatible_check})):
             custom_ops.color = color_tuple
             # Update all operators inside (excluding annotate operators)
             for comp in custom_ops.findChildren(type=COMP, maxDepth=1):
-                if 'annotate' not in comp.OPType.lower():
+                if comp.OPType != 'annotateCOMP':
                     comp.color = color_tuple
 
         self.ownerComp.color = color_tuple
