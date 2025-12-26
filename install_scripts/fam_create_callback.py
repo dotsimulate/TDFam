@@ -2,19 +2,9 @@
 # scriptOp - the OP which is cooking
 # FAM CREATE CALLBACK
 # Builds the operator family menu from Config DependDict and Properties
-import re
 
 def onSetupParameters(scriptOp):
     return
-
-def _parse_tox_info(filename):
-    """Parse operator name and version from .tox filename."""
-    match = re.match(r'(.+)_v(\d+\.\d+\.\d+)\.tox$', filename)
-    if match:
-        return (match.group(1), match.group(2))
-    if filename.endswith('.tox'):
-        return (filename[:-4], None)
-    return (None, None)
 
 def onPulse(par):
     return

@@ -111,6 +111,8 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         if hasattr(inst.par, 'Compatibletypes') and inst.par.Compatibletypes.eval():
             types_str = inst.par.Compatibletypes.eval()
             self.Properties['compatible_types'] = [t.strip() for t in types_str.split(',') if t.strip()]
+        if hasattr(inst.par, 'Namingconvention'):
+            self.Properties['naming_convention'] = inst.par.Namingconvention.eval()
 
     @property
     def index(self):
@@ -305,6 +307,24 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
 
         if hasattr(self, 'ui_injector') and self.ui_injector:
             self.ui_injector.update_family_color(self.Properties['color'])
+
+    def Namingconvention(self, pattern=None):
+        """
+        Set the .tox filename naming convention pattern.
+
+        Args:
+            pattern: Regex pattern for parsing version from filename.
+                     If None, uses Namingconvention parameter value.
+                     Empty string means no versioning.
+        """
+        if pattern is None:
+            pattern = self._installer.par.Namingconvention.eval()
+
+        self.Properties['naming_convention'] = pattern
+
+        # Refresh folder cache with new naming convention
+        if self.operators_folder:
+            self.file_loader.refresh_cache(self.operators_folder)
 
     # --- Stub for single operator ---
 

@@ -79,6 +79,7 @@ class OpFamCreateExt:
             'installed': False,
             'dynamic_refresh': dynamic_refresh,
             'compatible_types': compatible_types or [],
+            'naming_convention': r'(.+)_v(\d+\.\d+\.\d+)\.tox$',  # Default: name_vX.Y.Z.tox
         })
 
         # Single source of truth for config (matches JSON import/export structure)
@@ -196,6 +197,16 @@ class OpFamCreateExt:
     def compatible_types(self, value):
         """Set compatible types in Properties."""
         self.Properties['compatible_types'] = value or []
+
+    @property
+    def naming_convention(self):
+        """Get naming convention regex from Properties."""
+        return self.Properties['naming_convention']
+
+    @naming_convention.setter
+    def naming_convention(self, value):
+        """Set naming convention regex in Properties."""
+        self.Properties['naming_convention'] = value
 
     @property
     def FolderCache(self):

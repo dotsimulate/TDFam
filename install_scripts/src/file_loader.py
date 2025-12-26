@@ -87,9 +87,12 @@ class FileLoader:
         """
         Parse operator name and version from .tox filename.
 
+        Uses configurable naming_convention regex from Properties.
+        Pattern should have two capture groups: (name, version)
+
         Supports patterns:
-        - name_vX.Y.Z.tox -> (name, "X.Y.Z")
-        - name.tox -> (name, None)
+        - name_vX.Y.Z.tox -> (name, "X.Y.Z") with default pattern
+        - name.tox -> (name, None) if no version match
 
         Args:
             filename: The .tox filename
@@ -97,9 +100,13 @@ class FileLoader:
         Returns:
             tuple: (name, version) or (None, None) if invalid
         """
-        match = re.match(r'(.+)_v(\d+\.\d+\.\d+)\.tox$', filename)
-        if match:
-            return (match.group(1), match.group(2))
+        # Get configurable pattern from Properties
+        pattern = self.installer.Properties.get('naming_convention', r'(.+)_v(\d+\.\d+\.\d+)\.tox$')
+
+        if pattern:
+            match = re.match(pattern, filename)
+            if match:
+                return (match.group(1), match.group(2))
 
         if filename.endswith('.tox'):
             return (filename[:-4], None)
