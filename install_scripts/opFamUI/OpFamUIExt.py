@@ -29,11 +29,11 @@ class OpFamUIExt:
 
 # region Registry callbacks
 	
-	def onRegistryRegisteredFamily(self, fam_name, family_owner):
+	def onRegistryFamilyRegistered(self, fam_name, family_owner):
 		self.onFamilyTabSelected(fam_name)
 		return
 
-	def onRegistryUnregisteredFamily(self, fam_name):
+	def onRegistryFamilyUnregistered(self, fam_name):
 		# get first registered family and set it as selected
 		first_fam = next(iter(self.fam_registry.RegisteredFams), None)
 		self.onFamilyTabSelected(first_fam)

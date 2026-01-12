@@ -1,0 +1,17 @@
+{
+    "FamilyRegistered" : {
+        "arguments"     : [ "family_name:str", "family_owner:OP" ]
+    },
+    "FamilyUnregistered" : {
+        "arguments"     : [ "family_name:str"]
+    },
+    "FamilyInstalled" : {
+        "arguments"     : [ "family_name:str", "family_owner:OP" ]
+    },
+    "FamilyUninstalled" : {
+        "arguments"     : [ "family_name:str"]
+    },
+    "FamilyRenamed" : {
+        "arguments"     : [ "old_name:str", "new_name:str", "family_owner:OP"]
+    }
+}
