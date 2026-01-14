@@ -19,7 +19,7 @@ class GlobalUIInjector:
 		print(f"Installing UI for family: {family_name}")
 		try:
 			# 1. Per-family (Incremental)
-			self._create_inject_script(family_name, family_owner)
+			self._setup_global_inject_script()
 			self._deploy_panel_execute(family_name, family_owner)
 			self._update_compatible_table(family_name, family_owner)
 			self._update_colors_table(family_name, family_owner)
@@ -46,9 +46,9 @@ class GlobalUIInjector:
 			nodeTable = self.nodeTable
 
 			# 1. Per-family cleanup
-			
-			if nodeTable.op(f'inject_{family_name}_fam'):
-				nodeTable.op(f'inject_{family_name}_fam').destroy()
+			if not self.owner.InstalledFams:
+				if nodeTable.op('inject_opfam_registry'):
+					nodeTable.op('inject_opfam_registry').destroy()
 			
 			families_op = nodeTable.op('families')
 			if families_op:
@@ -103,6 +103,7 @@ class GlobalUIInjector:
 		"""
 		try:
 			# 1. Check if inject operation exists for this family
+			# TODO: this could be illegitimate check when updating to new version?
 			nodeTable = self.nodeTable
 			if nodeTable:
 				inject_op_name = f'inject_{family_name}_fam'
@@ -381,28 +382,33 @@ elif(source == 'input' and ({compatible_check})):
 			# If no new block (no families), just save the cleaned text
 			searchExec.text = text
 
-	def _create_inject_script(self, family_name, family_owner):
-		"""Create inject script in nodetable."""
+	def _setup_global_inject_script(self):
+		"""Create/Update the central inject script in nodetable."""
 		nodeTable = self.nodeTable
-		inject_op_name = f'inject_{family_name}_fam'
+		inject_op_name = 'inject_opfam_registry'
 		families_op = nodeTable.op('families')
 
-		if not families_op or nodeTable.op(inject_op_name):
+		if not families_op:
 			return
 
 		families_op.bypass = False
-		fam_owner_expr = f"op('{family_owner.path}')"
-
-		original_input = families_op.inputs[0] if families_op.inputs else None
-		inject_op = nodeTable.copy(families_op, name=inject_op_name, includeDocked=True)
-		inject_op.par.callbacks.expr = f"{fam_owner_expr}.op('fam_script_callbacks')"
-		inject_op.nodeX = families_op.nodeX + 150
+		
+		inject_op = nodeTable.op(inject_op_name)
+		if not inject_op:
+			original_input = families_op.inputs[0] if families_op.inputs else None
+			inject_op = nodeTable.copy(families_op, name=inject_op_name, includeDocked=True)
+			
+			if original_input:
+				# Insert into chain: input -> inject_op -> families_op
+				original_input.outputConnectors[0].disconnect()
+				original_input.outputConnectors[0].connect(inject_op)
+				inject_op.outputConnectors[0].connect(families_op)
+		
+		# Always ensure central registry callbacks are pointed to
+		inject_op.par.callbacks.expr = "op.FAMREGISTRY.op('fam_script_callbacks')"
+		
+		inject_op.nodeX = families_op.nodeX - 150
 		inject_op.nodeY = families_op.nodeY
-
-		if original_input:
-			original_input.outputConnectors[0].disconnect()
-			original_input.outputConnectors[0].connect(inject_op)
-			inject_op.outputConnectors[0].connect(families_op)
 
 		families_op.cook(force=True)
 		inject_op.cook(force=True)
@@ -526,9 +532,7 @@ elif(source == 'input' and ({compatible_check})):
 			nodeTable = self.nodeTable
 
 			# 1. Rename per-family elements
-			old_inject = nodeTable.op(f'inject_{old_name}_fam')
-			if old_inject:
-				old_inject.name = f'inject_{new_name}_fam'
+			# (Inject script is now global, no renaming needed)
 
 			old_panel = menuOp.op(f'{old_name}_panel_execute')
 			if old_panel:

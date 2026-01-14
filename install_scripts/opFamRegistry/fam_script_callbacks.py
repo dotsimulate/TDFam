@@ -21,41 +21,33 @@ def onPulse(par):
 
 import re
 def cook(scriptOp):
-    # Get current family and our family name
+    # Get current family
     if not scriptOp.inputs[0]:
         scriptOp.clear()
         return
     currFamily = scriptOp.inputs[0][0,0].val
 
-    # Get installer from callbacks parameter - callbacks points to this DAT,
-    # and this DAT's parent is the installer (install_scripts)
-    callbacks_dat = scriptOp.par.callbacks.eval()
-    installer = callbacks_dat.parent() if callbacks_dat else None
-    # Use Family parameter (always on installer) not opshortcut (may be on parent)
-    our_family = installer.par.Family.eval() if installer else ''
+    # Get Registry
+    registry = getattr(op, 'FAMREGISTRY', None)
+    if not registry:
+        scriptOp.copy(scriptOp.inputs[0])
+        return
 
     # Find the original families operator and nodetable
-    families_op = op('/ui/dialogs/menu_op/nodetable/families')
     nodetable = op('/ui/dialogs/menu_op/nodetable')
+    families_op = nodetable.op('families') if nodetable else None
     
-    
-    # Check for any active inject operators
-    active_injects = []
-    for op_name in nodetable.ops('inject_*_fam'):
-        if op_name.inputs[0] and op_name.inputs[0].valid:
-            active_injects.append(op_name.name)
-    
-    # Get families_op reference
-    families_op = op('/ui/dialogs/menu_op/nodetable/families')
+    # Check if this family is one of ours
+    installer = registry.InstalledFams.get(currFamily)
 
-    # If this isn't our family, copy input and un-bypass families so it processes normally
-    if currFamily != our_family:
+    # If this isn't one of our custom families, copy input and un-bypass families
+    if not installer:
         if families_op:
             families_op.bypass = False
         scriptOp.copy(scriptOp.inputs[0])
         return
 
-    # It's our family - bypass families_op and check if OP_fam is ready
+    # It's one of our families - bypass families_op
     if families_op:
         families_op.bypass = True
 
@@ -103,7 +95,7 @@ def cook(scriptOp):
 
 
     for family in allFamilies:
-        if family == our_family:  # Replace the hardcoded LOP check
+        if family == currFamily:  # Replace the hardcoded LOP check
             familyOps = installer.op('OP_fam')
 
             # Guard: check OP_fam has proper structure before processing
@@ -178,7 +170,7 @@ def cook(scriptOp):
 
                 # print(f"\nProcessing operator: {type}")
                 label = familyOps[i,'label'].val
-                isFilter = familyOps[i,'type'].val == f'layouts/{our_family}/defFilter'
+                isFilter = familyOps[i,'type'].val == f'layouts/{currFamily}/defFilter'
 
                 # Get OS compatibility value
                 os_compat = os_values.get(normalized_type, '1')  # Default to '1' (compatible) if not found
