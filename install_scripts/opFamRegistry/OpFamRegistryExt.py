@@ -104,8 +104,8 @@ class OpFamRegistryExt:
 				self.UnregisterFamily(prev[idx])
 
 	def _add_fam_tag(self, family_owner):
-		if 'FAM' not in family_owner.tags:
-			family_owner.tags.add('FAM')
+		if '<FAM>' not in family_owner.tags:
+			family_owner.tags.add('<FAM>')
 
 	@property
 	def NumFamiliesRegistered(self):

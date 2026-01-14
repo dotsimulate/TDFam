@@ -23,6 +23,8 @@ def ensure_family_tags(installer, custom_ops_base=None):
     for comp in custom_ops.findChildren(type=COMP, maxDepth=1):
         if family not in comp.tags:
             comp.tags.add(family)
+        if '<FAM>' not in comp.tags:
+            comp.tags.add('<FAM>')
 
 
 def ensure_type_tags(installer, custom_ops_base=None, pattern='suffix'):

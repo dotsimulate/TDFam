@@ -506,6 +506,14 @@ elif(source == 'input' and ({compatible_check})):
 				except:
 					pass
 
+		# Look for all operators in the network with the tag of family name and update the color
+		# TODO is this too strict? for backwards compatiblity just look for family names? 
+		# 	   what if there's a conflict with an optype of another fam and a fam name?
+		family_name = family_owner.Properties.get('family_name')
+		for _op in root.findChildren(type=COMP,tags=['<FAM>']):
+			if family_name in _op.tags:
+				_op.color = rgb_color
+
 
 	def update_family_name(self, old_name, new_name):
 		"""
