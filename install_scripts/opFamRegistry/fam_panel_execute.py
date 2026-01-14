@@ -9,24 +9,17 @@
 import ctypes
 
 def _get_family():
-	"""Derive family name from this script's name."""
-	return me.name.rsplit('_panel_execute', 1)[0]
+	"""Get current family from TAB menu context."""
+	current_op = op('/ui/dialogs/menu_op/current')
+	return current_op[0,0].val if current_op else ''
 
 def _get_installer():
-	"""Get the installer component for this family.
-
-	Uses inject script's callbacks parameter to find actual installer,
-	since op.{family} may point to a parent component (Shortcutcomp mode).
-	"""
+	"""Get the installer component for this family via the Registry."""
 	family = _get_family()
-	# Use inject script's callbacks to find actual installer
-	inject_script = parent.OPCREATE.op(f'nodetable/inject_{family}_fam')
-	if inject_script:
-		callbacks_dat = inject_script.par.callbacks.eval()
-		if callbacks_dat:
-			return callbacks_dat.parent()
-	# Fallback to direct shortcut for backwards compatibility
-	return getattr(op, family, None)
+	registry = getattr(op, 'FAMREGISTRY', None)
+	if registry and family in registry.InstalledFams:
+		return registry.InstalledFams[family]
+	return None
 
 def onOffToOn(panelValue):
 	return
@@ -41,21 +34,18 @@ def whileOff(panelValue):
 	return
 
 def onValueChange(panelValue, prev):
-    family = _get_family()
     installer = _get_installer()
-
-    if op('current')[0,0].val != family:
+    if not installer:
         return
 
     license = installer.op('License')
     if panelValue == -1:
         return
 
-    # Use the inject script output (sorted/displayed table) instead of raw OP_fam
-    # The inject script applies sorting from fam_script_callbacks.py
-    inject_script = parent.OPCREATE.op(f'nodetable/inject_{family}_fam')
+    # Use the unified global inject script output
+    inject_script = parent.OPCREATE.op('nodetable/inject_opfam_registry')
     if not inject_script:
-        # Fallback to raw OP_fam if inject not found
+        # Fallback to raw OP_fam
         inject_script = installer.op('OP_fam')
 
     rows_per_column = parent.OPCREATE.op('nodetable').par.tablerows.eval()

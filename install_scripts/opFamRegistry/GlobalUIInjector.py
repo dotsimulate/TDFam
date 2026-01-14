@@ -19,13 +19,13 @@ class GlobalUIInjector:
 		print(f"Installing UI for family: {family_name}")
 		try:
 			# 1. Per-family (Incremental)
-			self._setup_global_inject_script()
-			self._deploy_panel_execute(family_name, family_owner)
 			self._update_compatible_table(family_name, family_owner)
 			self._update_colors_table(family_name, family_owner)
 			self._set_owner_colors(family_owner)
 			
 			# 2. Global (Rebuild/Refresh)
+			self._setup_global_inject_script()
+			self._setup_global_panel_execute()
 			self._update_family_eval(self.menu_op.op('eval2'))
 			self._update_family_eval(self.nodeTable.op('eval4'))
 			self._setup_last_node_type()
@@ -49,6 +49,8 @@ class GlobalUIInjector:
 			if not self.owner.InstalledFams:
 				if nodeTable.op('inject_opfam_registry'):
 					nodeTable.op('inject_opfam_registry').destroy()
+				if menuOp.op('opfam_panel_execute'):
+					menuOp.op('opfam_panel_execute').destroy()
 			
 			families_op = nodeTable.op('families')
 			if families_op:
@@ -413,13 +415,18 @@ elif(source == 'input' and ({compatible_check})):
 		families_op.cook(force=True)
 		inject_op.cook(force=True)
 
-	def _deploy_panel_execute(self, family_name, family_owner):
-		"""Deploy fam_panel_execute to menu_op."""
-		panel_execute_path = f'{family_name}_panel_execute'
-		if self.menu_op.op(panel_execute_path):
+	def _setup_global_panel_execute(self, force=True):
+		"""Deploy single opfam_panel_execute to menu_op."""
+		panel_execute_path = 'opfam_panel_execute'
+		existing = self.menu_op.op(panel_execute_path)
+		if existing and not force:
+			# Already exists
 			return
 
-		source = family_owner.op('fam_panel_execute')
+		if existing and force:
+			existing.destroy()
+
+		source = self.ownerComp.op('fam_panel_execute')
 		if not source:
 			return
  
@@ -427,6 +434,10 @@ elif(source == 'input' and ({compatible_check})):
 		panel_execute.nodeX = self.menu_op.op('node_script').nodeX
 		panel_execute.nodeY = self.menu_op.op('node_script').nodeY + 100
 		panel_execute.par.syncfile = ''
+		panel_execute.par.file = ''
+		
+		# Ensure it listens to the correct panel (likely /ui/dialogs/menu_op)
+		# Usually it watches its parent.
 
 	def _update_compatible_table(self, family_name, family_owner):
 		"""Update compatible table with family entries."""
@@ -533,10 +544,7 @@ elif(source == 'input' and ({compatible_check})):
 
 			# 1. Rename per-family elements
 			# (Inject script is now global, no renaming needed)
-
-			old_panel = menuOp.op(f'{old_name}_panel_execute')
-			if old_panel:
-				old_panel.name = f'{new_name}_panel_execute'
+			# (Panel execute is now global, no renaming needed)
 
 			# 2. Update compatible table
 			compatibleTable = menuOp.op('compatible')
