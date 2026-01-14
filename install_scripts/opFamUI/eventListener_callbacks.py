@@ -7,7 +7,6 @@ def onFamilyUnregistered( family_name:str ):
 	return
 
 def onFamilyInstalled( family_name:str, family_owner:OP ):
-	ext.OpFamUIExt.onRegistryFamilyInstalled(family_name, family_owner)
 	return
 
 def onFamilyUninstalled( family_name:str ):

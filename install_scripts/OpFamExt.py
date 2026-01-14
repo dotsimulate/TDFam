@@ -284,10 +284,6 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         if old_name == name:
             return
 
-        # Delegate to ui_injector which handles Properties, shortcut, and UI elements
-        if hasattr(self, 'ui_injector') and self.ui_injector:
-            self.ui_injector.update_family_name(old_name, name)
-
     def Color(self, r=None, g=None, b=None):
         """
         Set family color and update UI.
@@ -304,9 +300,6 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
 
         # Update registry - this triggers all dependent expressions
         self.Properties['color'] = [r, g, b]
-
-        if hasattr(self, 'ui_injector') and self.ui_injector:
-            self.ui_injector.update_family_color(self.Properties['color'])
 
     def Namingconvention(self, pattern=None):
         """

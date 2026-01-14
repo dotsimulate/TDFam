@@ -1,5 +1,6 @@
 from __future__ import annotations
 from TDStoreTools import DependDict
+from GlobalUIInjector import GlobalUIInjector
 
 class OpFamRegistryExt:
 	def __init__(self, ownerComp):
@@ -7,7 +8,8 @@ class OpFamRegistryExt:
 		self.RegisteredFams = DependDict({})
 		self.InstalledFams = DependDict({})
 		self.EventEmitter = self.ownerComp.op('eventEmitter')
-
+		self.global_ui_injector = GlobalUIInjector(self.ownerComp, self)
+#
 	def RegisterFamily(self, family_owner : OpFamCreateExt):
 		fam_name = family_owner.Properties['family_name']
 		self._add_fam_tag(family_owner)
@@ -16,6 +18,9 @@ class OpFamRegistryExt:
 		self.EventEmitter.Emit('FamilyRegistered', fam_name, family_owner)
 
 	def UnregisterFamily(self, fam_name):
+		# TODO: discrepancy where this is the only high level function taking the name
+		# --- due to how we're checking deleted families that need to be unregistered 
+		# --- via eval and DAT callbacks
 		if fam_name in self.RegisteredFams:
 			del self.RegisteredFams[fam_name]
 			debug(f'Unregistered family: {fam_name}')
@@ -23,7 +28,8 @@ class OpFamRegistryExt:
 
 			# also uninstall if installed
 			if fam_name in self.InstalledFams:
-				self.UninstallFamily(fam_name)
+				family_owner = self.InstalledFams[fam_name]
+				self.UninstallFamily(family_owner)
 
 	def InstallFamily(self, family_owner : OpFamCreateExt):
 		fam_name = family_owner.Properties['family_name']
@@ -32,13 +38,22 @@ class OpFamRegistryExt:
 		
 		self.InstalledFams.setItem(fam_name, family_owner)
 		debug(f'Installed family: {fam_name}')
+		self.global_ui_injector.install(fam_name, family_owner)
 		self.EventEmitter.Emit('FamilyInstalled', fam_name, family_owner)
 
-	def UninstallFamily(self, fam_name):
+	def UninstallFamily(self, family_owner : OpFamCreateExt):
+		fam_name = family_owner.Properties['family_name']
 		if fam_name in self.InstalledFams:
 			del self.InstalledFams[fam_name]
 			debug(f'Uninstalled family: {fam_name}')
+			self.global_ui_injector.uninstall(fam_name)
 			self.EventEmitter.Emit('FamilyUninstalled', fam_name)
+			return True
+		return False
+
+	def IsFamilyInstalled(self, fam_name):
+		"""Public API to check if a family's UI is installed."""
+		return self.global_ui_injector.is_family_installed(fam_name)
 
 	def UpdateFamilyName(self, old_name, new_name):
 		# send event if indeed renamed
@@ -56,6 +71,7 @@ class OpFamRegistryExt:
 			family_owner = self.InstalledFams[old_name]
 			del self.InstalledFams[old_name]
 			self.InstalledFams.setItem(new_name, family_owner)
+			self.global_ui_injector.update_family_name(old_name, new_name)
 
 	def onRegistryChangeCallback(self, cells, prev):
 		for idx, _cell in enumerate(cells):

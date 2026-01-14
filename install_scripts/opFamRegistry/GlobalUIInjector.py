@@ -1,0 +1,580 @@
+from __future__ import annotations
+
+class GlobalUIInjector:
+	"""Global UI injector for OpFamRegistry."""
+	def __init__(self, ownerComp, owner : OpFamRegistryExt):
+		self.ownerComp = ownerComp
+		self.owner = owner
+		
+		self.nodeTable = op('/ui/dialogs/menu_op/nodetable')
+		
+		run(lambda: self.post_init(), endFrame=True, delayRef=op.TDResources)
+
+	def post_init(self):
+		self.famui_manager = self.get_or_create_famui_manager()
+
+	def install(self, family_name, family_owner):
+		"""Install all required UI injections for a new family"""
+		print(f"Installing UI for family: {family_name}")
+		try:
+			# 1. Per-family (Incremental)
+			self._create_family_insert(family_name, family_owner)
+			self._create_inject_script(family_name, family_owner)
+			self._deploy_panel_execute(family_name, family_owner)
+			self._update_compatible_table(family_name, family_owner)
+			self._update_colors_table(family_name, family_owner)
+			self._set_owner_colors(family_owner)
+			
+			# 2. Global (Rebuild/Refresh)
+			self._update_eval4()
+			self._setup_last_node_type()
+			self._modify_launch_menu()
+			self._modify_create_node()
+			self._modify_search_exec()
+			
+		except Exception as e:
+			debug(f'Error installing UI for family {family_name}: {e}')
+			import traceback
+			debug(traceback.format_exc())
+
+	def uninstall(self, family_name):
+		"""Uninstall UI injections for a specific family"""
+		print(f"Uninstalling UI for family: {family_name}")
+		try:
+			menuOp = op('/ui/dialogs/menu_op')
+			nodeTable = self.nodeTable
+
+			# 1. Per-family cleanup
+			if menuOp.op(f'{family_name}_insert'):
+				menuOp.op(f'{family_name}_insert').destroy()
+			
+			if nodeTable.op(f'inject_{family_name}_fam'):
+				nodeTable.op(f'inject_{family_name}_fam').destroy()
+			
+			families_op = nodeTable.op('families')
+			if families_op:
+				menuOp.op('families/family').click(0,0)
+				families_op.bypass = False
+
+			if menuOp.op(f'{family_name}_panel_execute'):
+				menuOp.op(f'{family_name}_panel_execute').destroy()
+			
+			# Remove from colors table
+			colors_table = menuOp.op('colors')
+			if colors_table:
+				for i in range(colors_table.numRows):
+					if colors_table[i, 0].val == f"'{family_name}'":
+						colors_table.deleteRow(i)
+						break
+
+			# Remove from compatible table
+			compatibleTable = menuOp.op('compatible')
+			if compatibleTable:
+				if compatibleTable.rows(family_name):
+					compatibleTable.deleteRow(family_name)
+				if compatibleTable.cols(family_name):
+					compatibleTable.deleteCol(family_name)
+
+			# 2. Global Refresh (rebuilds scripts without this family)
+			self._update_eval4()
+			self._update_colors_table()
+
+			# Check if any custom families remain
+			if not self.owner.InstalledFams:
+				# If no families left, restore launch_menu and cleanup global scripts
+				launch_menu_op = menuOp.op('launch_menu_op')
+				if launch_menu_op:
+					code = launch_menu_op.text
+					key = "if($type != \"none\")\n\tcvar menu_type=$type\n\trun set_last_node_type\n\tset type = $lasttype"
+					replacement = 'if($type != "none")'
+					launch_menu_op.text = code.replace(key, replacement)
+
+				if menuOp.op('set_last_node_type'):
+					menuOp.op('set_last_node_type').destroy()
+			else:
+				# If families remain, just update the script
+				self._setup_last_node_type()
+
+			# self._modify_launch_menu() # launch menu doesn't need refresh on uninstall usually
+			self._modify_create_node()
+			self._modify_search_exec()
+
+		except Exception as e:
+			debug(f'Error uninstalling UI for family {family_name}: {e}')
+
+	# ==================== Global Rebuild Methods ====================
+	
+	def is_family_installed(self, family_name):
+		"""
+		Check if installation is actually needed by verifying if family-specific components are already in place.
+		"""
+		try:
+			# 1. Check if inject operation exists for this family
+			nodeTable = self.nodeTable
+			if nodeTable:
+				inject_op_name = f'inject_{family_name}_fam'
+				if nodeTable.op(inject_op_name):
+					return True
+			
+			# 2. Check if this family is in the eval4 expression
+			if nodeTable:
+				eval4 = nodeTable.op('eval4')
+				if eval4:
+					current_expr = eval4.par.expr.eval()
+					if current_expr and family_name in current_expr:
+						return True
+			
+			# 3. Check if bookmark bar toggle exists
+			toggle_path = f"/ui/dialogs/bookmark_bar/{family_name}_toggle"
+			if op(toggle_path):
+				return True
+
+			return False
+			
+		except Exception as e:
+			debug(f"Error checking if family {family_name} is installed: {e}")
+			return False
+
+
+	def _update_eval4(self):
+		"""Update eval4 expression to include all installed families."""
+		eval4 = self.nodeTable.op('eval4')
+		if not eval4:
+			return
+
+		_expr = "[x for x in families.keys()]"
+		if self.owner.InstalledFams:
+			_expr += " + ["
+			for fam_name in self.owner.InstalledFams.keys():
+				_expr += f"'{fam_name}', "
+			_expr += "]"
+
+		eval4.par.expr = _expr
+
+	def _update_colors_table(self, family_name=None, family_owner=None):
+		"""
+		Update colors table with family color.
+		Ensures family-specific colors are updated or appended without clearing the table.
+		"""
+		menu_op = op('/ui/dialogs/menu_op')
+		colors_table = menu_op.op('colors')
+		if not colors_table:
+			return
+
+		# If arguments provided, update/add that specific family
+		if family_name and family_owner:
+			color = family_owner.Properties['color']
+			family_exists = False
+			for i in range(colors_table.numRows):
+				if colors_table[i, 0].val == f"'{family_name}'":
+					for j in range(min(len(color), colors_table.numCols - 1)):
+						colors_table[i, j + 1] = color[j]
+					family_exists = True
+					break
+			if not family_exists:
+				new_row = [f"'{family_name}'"] + list(color)
+				colors_table.appendRow(new_row)
+		else:
+			# If no arguments, ensure all currently installed families are present/updated
+			for fam_name, fam_owner in self.owner.InstalledFams.items():
+				color = fam_owner.Properties['color']
+				family_exists = False
+				for i in range(colors_table.numRows):
+					if colors_table[i, 0].val == f"'{fam_name}'":
+						for j in range(min(len(color), colors_table.numCols - 1)):
+							colors_table[i, j + 1] = color[j]
+						family_exists = True
+						break
+				if not family_exists:
+					new_row = [f"'{fam_name}'"] + list(color)
+					colors_table.appendRow(new_row)
+
+	def _setup_last_node_type(self):
+		"""Create/update set_last_node_type script for all families."""
+		menu_op = op('/ui/dialogs/menu_op')
+		setLastNodeType = menu_op.op('set_last_node_type')
+		if not setLastNodeType:
+			setLastNodeType = menu_op.create(textDAT, 'set_last_node_type')
+			launch_menu = menu_op.op('launch_menu_op')
+			if launch_menu:
+				setLastNodeType.nodeX = launch_menu.nodeX - 200
+				setLastNodeType.nodeY = launch_menu.nodeY
+
+		if not self.owner.InstalledFams:
+			setLastNodeType.text = ""
+			return
+
+		# Collect all compatible types and build checks
+		fam_checks = []
+		all_compatible_types = set()
+		for fam_name, fam_owner in self.owner.InstalledFams.items():
+			fam_checks.append(f"if ('{fam_name}' in lastnode.tags):\n\t\ttype = '{fam_name}'")
+			for t in fam_owner.Properties.get('compatible_types', []):
+				all_compatible_types.add(t)
+
+		compatible_check = ' or '.join([f"menu_type=='{t}'" for t in all_compatible_types]) or "False"
+		
+		# Build per-family mouse pos checks
+		mouse_checks = []
+		for fam_name in self.owner.InstalledFams.keys():
+			mouse_checks.append(f"if('{fam_name}' in child.tags):\n\t\t\t\ttype = '{fam_name}'")
+
+		fam_check_str = "\n\tel".join(fam_checks)
+		mouse_check_str = "\n\t\t\tel".join(mouse_checks)
+
+		script = f'''varTable = op('local/set_variables')
+lastnode = op(varTable['nodepath',1])
+source = varTable['source',1].val
+menu_type = varTable['menu_type',1].val
+if(lastnode and source == 'output'):
+	type = lastnode.family
+	{fam_check_str}
+	varTable['lasttype',1] = type
+elif(source == 'input' and ({compatible_check})):
+	pane = ui.panes.current
+	zoom = pane.zoom
+	currentParent = pane.owner
+	mousePos = [varTable['xpos',1],varTable['ypos',1]]
+	type = menu_type
+	for child in currentParent.findChildren(maxDepth=1):
+		if (-5<(mousePos[0]-child.nodeX)*zoom<15 and child.nodeY+child.nodeHeight>mousePos[1] and mousePos[1]>child.nodeY):
+			{mouse_check_str}
+			if type != menu_type:
+				varTable['lastnode',1] = child.name
+				varTable['nodepath',1] = child.path
+				break
+	varTable['lasttype',1] = type'''
+
+		setLastNodeType.text = script
+
+	def _modify_launch_menu(self):
+		"""Modify launch_menu_op script to use set_last_node_type."""
+		menu_op = op('/ui/dialogs/menu_op')
+		launch_menu_op = menu_op.op('launch_menu_op')
+		if not launch_menu_op:
+			return
+
+		code = launch_menu_op.text
+		key = 'if($type != "none")'
+		replacement = f"{key}\n\tcvar menu_type=$type\n\trun set_last_node_type\n\tset type = $lasttype"
+
+		if 'run set_last_node_type' not in code:
+			launch_menu_op.text = code.replace(key, replacement)
+
+	def _modify_create_node(self):
+		"""Modify create_node script to skip creation for custom families (handled by inject scripts)."""
+		menu_op = op('/ui/dialogs/menu_op')
+		createNode = menu_op.op('create_node')
+		if not createNode:
+			return
+
+		text = createNode.text
+		import re
+		# Remove any existing injected family blocks
+		text = re.sub(r"if\(\$type=='[^']+'\)\s+exit\s+endif\n?", "", text)
+		
+		insertion_key = 'set type = `tab("current",0,0)`\n'
+		if insertion_key not in text:
+			return
+
+		# Build new block
+		if not self.owner.InstalledFams:
+			createNode.text = text
+			return
+
+		insert_code = ""
+		for fam_name in self.owner.InstalledFams.keys():
+			insert_code += f"if($type=='{fam_name}')\n\texit\nendif\n"
+
+		index = text.index(insertion_key)
+		createNode.text = (
+			text[:index + len(insertion_key)]
+			+ insert_code
+			+ text[index + len(insertion_key):]
+		)
+
+	def _modify_search_exec(self):
+		"""Modify search panel exec to handle custom families."""
+		menu_op = op('/ui/dialogs/menu_op')
+		searchExec = menu_op.op('search/panelexec1')
+		if not searchExec:
+			return
+
+		text = searchExec.text
+		import re
+		# Remove any existing injected family blocks
+		pattern = r"\t\t\tif\(op\('/ui/dialogs/menu_op/current'\)\[0,0\]\.val=='[^']+'\):\n\t\t\t\tparent\.OPCREATE\.op\('nodetable'\)\.clickID\(-?\d+\)\n\t\t\t\treturn\n"
+		text = re.sub(pattern, "", text)
+
+		# Build new block
+		if not self.owner.InstalledFams:
+			searchExec.text = text
+			return
+
+		fam_names = list(self.owner.InstalledFams.keys())
+		fam_list_str = str(fam_names)
+		
+		new_code = (
+			f"\t\t\tif(op('/ui/dialogs/menu_op/current')[0,0].val in {fam_list_str}):\n"
+			f"\t\t\t\tparent.OPCREATE.op('nodetable').clickID(-8358)\n"
+			f"\t\t\t\treturn\n"
+		)
+
+		key = "if parent.OPCREATE.op('nodetable/destil').numRows > 1:\n"
+		if key in text:
+			index = text.index(key)
+			searchExec.text = (
+				text[:index + len(key)]
+				+ new_code
+				+ text[index + len(key):]
+			)
+		else:
+			searchExec.text = text
+
+	# ==================== Per-Family Helpers ====================
+
+	def _create_family_insert(self, family_name, family_owner):
+		"""Create family insert DAT in menu_op."""
+		menuOp = op('/ui/dialogs/menu_op')
+		if menuOp.op(f'{family_name}_insert'):
+			return
+
+		familyInsert = menuOp.create(insertDAT, f'{family_name}_insert')
+		familyInsert.par.insert = 'col'
+		familyInsert.par.at = 'index'
+
+		fam_owner_expr = f"op('{family_owner.path}')"
+		familyInsert.par.index.expr = f'{fam_owner_expr}.par.Index'
+		familyInsert.par.contents = family_name
+
+		# Insert into chain
+		insert1 = menuOp.op('insert1')
+		current_output = insert1.outputs[0]
+		insert1.outputConnectors[0].disconnect()
+		insert1.outputConnectors[0].connect(familyInsert)
+		familyInsert.outputConnectors[0].connect(current_output)
+		familyInsert.nodeX = insert1.nodeX + 150
+		familyInsert.nodeY = insert1.nodeY
+
+	def _create_inject_script(self, family_name, family_owner):
+		"""Create inject script in nodetable."""
+		nodeTable = self.nodeTable
+		inject_op_name = f'inject_{family_name}_fam'
+		families_op = nodeTable.op('families')
+
+		if not families_op or nodeTable.op(inject_op_name):
+			return
+
+		families_op.bypass = False
+		fam_owner_expr = f"op('{family_owner.path}')"
+
+		original_input = families_op.inputs[0] if families_op.inputs else None
+		inject_op = nodeTable.copy(families_op, name=inject_op_name, includeDocked=True)
+		inject_op.par.callbacks.expr = f"{fam_owner_expr}.op('fam_script_callbacks')"
+		inject_op.nodeX = families_op.nodeX + 150
+		inject_op.nodeY = families_op.nodeY
+
+		if original_input:
+			original_input.outputConnectors[0].disconnect()
+			original_input.outputConnectors[0].connect(inject_op)
+			inject_op.outputConnectors[0].connect(families_op)
+
+		families_op.cook(force=True)
+		inject_op.cook(force=True)
+
+	def _deploy_panel_execute(self, family_name, family_owner):
+		"""Deploy fam_panel_execute to menu_op."""
+		menuOp = op('/ui/dialogs/menu_op')
+		panel_execute_path = f'{family_name}_panel_execute'
+		if menuOp.op(panel_execute_path):
+			return
+
+		source = family_owner.op('fam_panel_execute')
+		if not source:
+			return
+
+		panel_execute = menuOp.copy(source, name=panel_execute_path)
+		panel_execute.nodeX = menuOp.op('node_script').nodeX
+		panel_execute.nodeY = menuOp.op('node_script').nodeY + 100
+		panel_execute.par.syncfile = ''
+
+	def _update_compatible_table(self, family_name, family_owner):
+		"""Update compatible table with family entries."""
+		menuOp = op('/ui/dialogs/menu_op')
+		compatibleTable = menuOp.op('compatible')
+		if not compatibleTable:
+			return
+
+		connection_map = family_owner.connection_map if hasattr(family_owner, 'connection_map') else {}
+		compatible_types = family_owner.Properties.get('compatible_types', [])
+
+		# Build row entry
+		row_entry = [family_name]
+		for index in range(1, compatibleTable.numCols):
+			col_type = compatibleTable[0, index].val
+			connection_key = (family_name, col_type)
+			if connection_key in connection_map:
+				row_entry.append(connection_map[connection_key])
+			elif col_type in compatible_types:
+				row_entry.append('x')
+			else:
+				row_entry.append('')
+
+		# Build col entry
+		col_entry = [family_name]
+		for row in compatibleTable.rows()[1:]:
+			row_type = row[0].val
+			connection_key = (row_type, family_name)
+			if connection_key in connection_map:
+				col_entry.append(connection_map[connection_key])
+			elif row_type in compatible_types:
+				col_entry.append('x')
+			else:
+				col_entry.append('')
+
+		# Add row and column
+		if not compatibleTable.rows(family_name):
+			compatibleTable.appendRow(row_entry)
+		if not compatibleTable.cols(family_name):
+			compatibleTable.appendCol(col_entry)
+
+		# Set self-compatibility
+		try:
+			row_index = compatibleTable.rows(family_name)[0].index
+			col_index = compatibleTable.cols(family_name)[0].index
+			compatibleTable[row_index, col_index] = 'x'
+		except Exception as e:
+			debug(f"Error setting self-compatibility: {e}")
+
+	def _set_owner_colors(self, family_owner):
+		"""Set color on all family owner children."""
+		color = family_owner.Properties.get('color', [0.5, 0.5, 0.5])
+		color_val = list(color)
+		if len(color_val) < 4:
+			color_val = color_val + [1.0] * (4 - len(color_val))
+
+		for o in family_owner.findChildren():
+			if 'License' not in o.name and o.OPType != 'annotateCOMP':
+				try:
+					o.color = color_val
+				except:
+					pass
+		try:
+			family_owner.color = color_val
+		except:
+			pass
+
+
+	def update_family_name(self, old_name, new_name):
+		"""
+		Update family name in UI elements.
+		Rebuilds global scripts and renames per-family elements.
+		"""
+		print(f"Updating UI for family name change: {old_name} -> {new_name}")
+		try:
+			menuOp = op('/ui/dialogs/menu_op')
+			nodeTable = self.nodeTable
+
+			# 1. Rename per-family elements
+			old_insert = menuOp.op(f'{old_name}_insert')
+			if old_insert:
+				old_insert.name = f'{new_name}_insert'
+				old_insert.par.contents = new_name
+				# Update expression if it uses name
+				# (In our new version we use path, so this might not be needed if path is same)
+
+			old_inject = nodeTable.op(f'inject_{old_name}_fam')
+			if old_inject:
+				old_inject.name = f'inject_{new_name}_fam'
+
+			old_panel = menuOp.op(f'{old_name}_panel_execute')
+			if old_panel:
+				old_panel.name = f'{new_name}_panel_execute'
+
+			# 2. Update compatible table
+			compatibleTable = menuOp.op('compatible')
+			if compatibleTable:
+				# Update row header
+				for i in range(compatibleTable.numRows):
+					if compatibleTable[i, 0].val == old_name:
+						compatibleTable[i, 0] = new_name
+						break
+				# Update column header
+				for i in range(compatibleTable.numCols):
+					if compatibleTable[0, i].val == old_name:
+						compatibleTable[0, i] = new_name
+						break
+
+			# 3. Global Refresh (rebuilds scripts with new name)
+			self._update_eval4()
+			self._update_colors_table()
+			self._setup_last_node_type()
+			self._modify_create_node()
+			self._modify_search_exec()
+
+		except Exception as e:
+			debug(f'Error updating UI for family name change: {e}')
+
+	def update_family_color(self, family_name, new_color):
+		"""
+		Update family color in UI elements.
+		Updates the colors table and family owner children.
+		"""
+		print(f"Updating UI color for family: {family_name}")
+		try:
+			# 1. Update colors table (global rebuild is easiest to keep in sync)
+			self._update_colors_table()
+
+			# 2. Update owner colors
+			family_owner = self.owner.InstalledFams.get(family_name)
+			if family_owner:
+				self._set_owner_colors(family_owner)
+				
+		except Exception as e:
+			debug(f'Error updating UI color for family {family_name}: {e}')
+
+# region famui_manager
+
+	def get_or_create_famui_manager(self, force=False):
+		"""Get or create the central OpFamUI manager."""
+		# Check if already installed at global location
+		ui_manager_path = '/ui/dialogs/mainmenu/OpFamUI'
+		ui_manager = op(ui_manager_path)
+		
+		internal = self.ownerComp.op('internal_pars')
+		if internal:
+			force = force or internal.par.Force.eval() # callers force takes precedence
+			local_dev = internal.par.Dev.eval()
+		else:
+			local_dev = False
+
+		if (force or local_dev) and ui_manager:
+			ui_manager.destroy()
+			ui_manager = None
+
+		if not ui_manager:
+			# Copy from our template
+			template = self.ownerComp.op('OpFamUI')
+			
+			if local_dev:
+				template = self.ownerComp.op('OpFamUI/OpFamUI')
+
+			if template:
+				mainmenu = op('/ui/dialogs/mainmenu')
+				if mainmenu:
+					ui_manager = mainmenu.copy(template, name='OpFamUI')
+					ui_manager.allowCooking = True
+
+					# Wire up to emptypanel in mainmenu
+					emptypanel = mainmenu.op('emptypanel')
+					if emptypanel and ui_manager.inputCOMPConnectors:
+						ui_manager.inputCOMPConnectors[0].connect(emptypanel)
+
+					if local_dev:
+						ui_manager.par.enable = True
+						ui_manager.par.display = True
+						ui_manager.par.selectpanel = self.ownerComp.op('OpFamUI')
+
+		return ui_manager if not local_dev else self.ownerComp.op('OpFamUI')
+
+# endregion

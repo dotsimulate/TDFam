@@ -103,7 +103,6 @@ class OpFamCreateExt:
         self.config = ConfigManager(self)
         self.stubs = StubManager(self)
         self.updates = UpdateManager(self)
-        self.ui_injector = UIInjector(self)
 
         # Ensure config tables exist with proper headers
         self.config.ensure_tables_exist()
@@ -128,10 +127,6 @@ class OpFamCreateExt:
     def postInitInstaller(self):
         try:
             self.fam_registry : OpFamRegistryExt = self._get_or_create_fam_registry()
-            if self.fam_registry:
-                self.ui_injector.get_or_create_ui_manager()
-            else:
-                raise Exception("Failed to create or get fam registry")
         except Exception as e:
             print(f"Failed to create or get fam registry: {e}")
 
@@ -241,7 +236,7 @@ class OpFamCreateExt:
         self.shortcut_comp.par.opshortcut = self.FamilyName.val
 
         if self.ownerComp.par.Install == 1:
-            if self.ui_injector.is_installation_needed():
+            if not self.fam_registry.IsFamilyInstalled(self.FamilyName.val):
                 current_time = time.time()
                 if current_time - self.last_install_time >= self.install_cooldown:
                     self.Install()
@@ -296,14 +291,13 @@ class OpFamCreateExt:
         if self.operators_folder:
             self.file_loader.refresh_cache(self.operators_folder)
         self.fam_registry.InstallFamily(self.ownerComp)
-        self.ui_injector.install()
         self._call_hook('_PostInstall')
 
     def Uninstall(self):
         """Uninstall the operator family from TouchDesigner's UI."""
         self._call_hook('_PreUninstall')
-        self.ui_injector.uninstall()
         self.fam_registry.UninstallFamily(self.ownerComp)
+        # TODO: do we check return and only then call the post?
         self._call_hook('_PostUninstall')
 
     def TagOperators(self, pattern='suffix'):
