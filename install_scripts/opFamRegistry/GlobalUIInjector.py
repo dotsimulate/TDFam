@@ -6,7 +6,8 @@ class GlobalUIInjector:
 		self.ownerComp = ownerComp
 		self.owner = owner
 		
-		self.nodeTable = op('/ui/dialogs/menu_op/nodetable')
+		self.menu_op = op('/ui/dialogs/menu_op')
+		self.nodeTable = self.menu_op.op('nodetable') if self.menu_op else None
 		
 		run(lambda: self.post_init(), endFrame=True, delayRef=op.TDResources)
 
@@ -18,7 +19,6 @@ class GlobalUIInjector:
 		print(f"Installing UI for family: {family_name}")
 		try:
 			# 1. Per-family (Incremental)
-			self._create_family_insert(family_name, family_owner)
 			self._create_inject_script(family_name, family_owner)
 			self._deploy_panel_execute(family_name, family_owner)
 			self._update_compatible_table(family_name, family_owner)
@@ -26,7 +26,8 @@ class GlobalUIInjector:
 			self._set_owner_colors(family_owner)
 			
 			# 2. Global (Rebuild/Refresh)
-			self._update_eval4()
+			self._update_family_eval(self.menu_op.op('eval2'))
+			self._update_family_eval(self.nodeTable.op('eval4'))
 			self._setup_last_node_type()
 			self._modify_launch_menu()
 			self._modify_create_node()
@@ -41,12 +42,10 @@ class GlobalUIInjector:
 		"""Uninstall UI injections for a specific family"""
 		print(f"Uninstalling UI for family: {family_name}")
 		try:
-			menuOp = op('/ui/dialogs/menu_op')
+			menuOp = self.menu_op
 			nodeTable = self.nodeTable
 
 			# 1. Per-family cleanup
-			if menuOp.op(f'{family_name}_insert'):
-				menuOp.op(f'{family_name}_insert').destroy()
 			
 			if nodeTable.op(f'inject_{family_name}_fam'):
 				nodeTable.op(f'inject_{family_name}_fam').destroy()
@@ -76,7 +75,8 @@ class GlobalUIInjector:
 					compatibleTable.deleteCol(family_name)
 
 			# 2. Global Refresh (rebuilds scripts without this family)
-			self._update_eval4()
+			self._update_family_eval(self.menu_op.op('eval2'))
+			self._update_family_eval(self.nodeTable.op('eval4'))
 			self._update_colors_table()
 
 			# Update and cleanup global scripts
@@ -129,10 +129,9 @@ class GlobalUIInjector:
 			return False
 
 
-	def _update_eval4(self):
-		"""Update eval4 expression to include all installed families."""
-		eval4 = self.nodeTable.op('eval4')
-		if not eval4:
+	def _update_family_eval(self, op_to_update):
+		"""Update eval expression to include all installed families."""
+		if not op_to_update:
 			return
 
 		_expr = "[x for x in families.keys()]"
@@ -142,15 +141,14 @@ class GlobalUIInjector:
 				_expr += f"'{fam_name}', "
 			_expr += "]"
 
-		eval4.par.expr = _expr
+		op_to_update.par.expr = _expr
 
 	def _update_colors_table(self, family_name=None, family_owner=None):
 		"""
 		Update colors table with family color.
 		Ensures family-specific colors are updated or appended without clearing the table.
 		"""
-		menu_op = op('/ui/dialogs/menu_op')
-		colors_table = menu_op.op('colors')
+		colors_table = self.menu_op.op('colors')
 		if not colors_table:
 			return
 
@@ -184,11 +182,10 @@ class GlobalUIInjector:
 
 	def _setup_last_node_type(self):
 		"""Create/update set_last_node_type script for all families."""
-		menu_op = op('/ui/dialogs/menu_op')
-		setLastNodeType = menu_op.op('set_last_node_type')
+		setLastNodeType = self.menu_op.op('set_last_node_type')
 		if not setLastNodeType:
-			setLastNodeType = menu_op.create(textDAT, 'set_last_node_type')
-			launch_menu = menu_op.op('launch_menu_op')
+			setLastNodeType = self.menu_op.create(textDAT, 'set_last_node_type')
+			launch_menu = self.menu_op.op('launch_menu_op')
 			if launch_menu:
 				setLastNodeType.nodeX = launch_menu.nodeX - 200
 				setLastNodeType.nodeY = launch_menu.nodeY
@@ -242,8 +239,7 @@ elif(source == 'input' and ({compatible_check})):
 
 	def _modify_launch_menu(self):
 		"""Modify launch_menu_op script to use set_last_node_type."""
-		menu_op = op('/ui/dialogs/menu_op')
-		launch_menu_op = menu_op.op('launch_menu_op')
+		launch_menu_op = self.menu_op.op('launch_menu_op')
 		if not launch_menu_op:
 			return
 
@@ -268,8 +264,7 @@ elif(source == 'input' and ({compatible_check})):
 
 	def _modify_create_node(self):
 		"""Modify create_node script to skip creation for custom families (handled by inject scripts)."""
-		menu_op = op('/ui/dialogs/menu_op')
-		createNode = menu_op.op('create_node')
+		createNode = self.menu_op.op('create_node')
 		if not createNode:
 			return
 
@@ -316,8 +311,7 @@ elif(source == 'input' and ({compatible_check})):
 
 	def _modify_search_exec(self):
 		"""Modify search panel exec to handle custom families."""
-		menu_op = op('/ui/dialogs/menu_op')
-		searchExec = menu_op.op('search/panelexec1')
+		searchExec = self.menu_op.op('search/panelexec1')
 		if not searchExec:
 			return
 
@@ -354,7 +348,7 @@ elif(source == 'input' and ({compatible_check})):
 			
 			new_block = (
 				f"{start_marker}"
-				f"\t\t\tif(op('/ui/dialogs/menu_op/current')[0,0].val in {fam_list_str}):\n"
+				f"\t\t\tif(op('{self.menu_op.path}/current')[0,0].val in {fam_list_str}):\n"
 				f"\t\t\t\tparent.OPCREATE.op('nodetable').clickID(-8358)\n"
 				f"\t\t\t\treturn\n"
 				f"{end_marker}"
@@ -387,31 +381,6 @@ elif(source == 'input' and ({compatible_check})):
 			# If no new block (no families), just save the cleaned text
 			searchExec.text = text
 
-	# ==================== Per-Family Helpers ====================
-
-	def _create_family_insert(self, family_name, family_owner):
-		"""Create family insert DAT in menu_op."""
-		menuOp = op('/ui/dialogs/menu_op')
-		if menuOp.op(f'{family_name}_insert'):
-			return
-
-		familyInsert = menuOp.create(insertDAT, f'{family_name}_insert')
-		familyInsert.par.insert = 'col'
-		familyInsert.par.at = 'index'
-
-		fam_owner_expr = f"op('{family_owner.path}')"
-		familyInsert.par.index.expr = f'{fam_owner_expr}.par.Index'
-		familyInsert.par.contents = family_name
-
-		# Insert into chain
-		insert1 = menuOp.op('insert1')
-		current_output = insert1.outputs[0]
-		insert1.outputConnectors[0].disconnect()
-		insert1.outputConnectors[0].connect(familyInsert)
-		familyInsert.outputConnectors[0].connect(current_output)
-		familyInsert.nodeX = insert1.nodeX + 150
-		familyInsert.nodeY = insert1.nodeY
-
 	def _create_inject_script(self, family_name, family_owner):
 		"""Create inject script in nodetable."""
 		nodeTable = self.nodeTable
@@ -440,24 +409,22 @@ elif(source == 'input' and ({compatible_check})):
 
 	def _deploy_panel_execute(self, family_name, family_owner):
 		"""Deploy fam_panel_execute to menu_op."""
-		menuOp = op('/ui/dialogs/menu_op')
 		panel_execute_path = f'{family_name}_panel_execute'
-		if menuOp.op(panel_execute_path):
+		if self.menu_op.op(panel_execute_path):
 			return
 
 		source = family_owner.op('fam_panel_execute')
 		if not source:
 			return
-
-		panel_execute = menuOp.copy(source, name=panel_execute_path)
-		panel_execute.nodeX = menuOp.op('node_script').nodeX
-		panel_execute.nodeY = menuOp.op('node_script').nodeY + 100
+ 
+		panel_execute = self.menu_op.copy(source, name=panel_execute_path)
+		panel_execute.nodeX = self.menu_op.op('node_script').nodeX
+		panel_execute.nodeY = self.menu_op.op('node_script').nodeY + 100
 		panel_execute.par.syncfile = ''
 
 	def _update_compatible_table(self, family_name, family_owner):
 		"""Update compatible table with family entries."""
-		menuOp = op('/ui/dialogs/menu_op')
-		compatibleTable = menuOp.op('compatible')
+		compatibleTable = self.menu_op.op('compatible')
 		if not compatibleTable:
 			return
 
@@ -496,9 +463,15 @@ elif(source == 'input' and ({compatible_check})):
 
 		# Set self-compatibility
 		try:
-			row_index = compatibleTable.rows(family_name)[0].index
-			col_index = compatibleTable.cols(family_name)[0].index
-			compatibleTable[row_index, col_index] = 'x'
+			# Find row in first column
+			row_cells = compatibleTable.findCells(family_name, cols=[0])
+			# Find col in first row
+			col_cells = compatibleTable.findCells(family_name, rows=[0])
+			
+			if row_cells and col_cells:
+				row_idx = row_cells[0].row
+				col_idx = col_cells[0].col
+				compatibleTable[row_idx, col_idx] = 'x'
 		except Exception as e:
 			debug(f"Error setting self-compatibility: {e}")
 
@@ -541,17 +514,10 @@ elif(source == 'input' and ({compatible_check})):
 		"""
 		print(f"Updating UI for family name change: {old_name} -> {new_name}")
 		try:
-			menuOp = op('/ui/dialogs/menu_op')
+			menuOp = self.menu_op
 			nodeTable = self.nodeTable
 
 			# 1. Rename per-family elements
-			old_insert = menuOp.op(f'{old_name}_insert')
-			if old_insert:
-				old_insert.name = f'{new_name}_insert'
-				old_insert.par.contents = new_name
-				# Update expression if it uses name
-				# (In our new version we use path, so this might not be needed if path is same)
-
 			old_inject = nodeTable.op(f'inject_{old_name}_fam')
 			if old_inject:
 				old_inject.name = f'inject_{new_name}_fam'
@@ -575,7 +541,8 @@ elif(source == 'input' and ({compatible_check})):
 						break
 
 			# 3. Global Refresh (rebuilds scripts with new name)
-			self._update_eval4()
+			self._update_family_eval(self.menu_op.op('eval2'))
+			self._update_family_eval(self.nodeTable.op('eval4'))
 			self._update_colors_table()
 			self._setup_last_node_type()
 			self._modify_create_node()
