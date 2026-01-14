@@ -134,7 +134,7 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         return 'me'
 
     @property
-    def shortcut_comp(self):
+    def ShortcutComp(self):
         """Get the component that receives the op shortcut based on Shortcutcomp parameter."""
         mode = self.shortcut_mode
         if mode == 'me':
@@ -284,6 +284,12 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         if old_name == name:
             return
 
+        # Update registry
+        if self.fam_registry:
+            self.fam_registry.UpdateFamilyName(old_name, name)
+        
+        self.Properties['family_name'] = name
+
     def Color(self, r=None, g=None, b=None):
         """
         Set family color and update UI.
@@ -299,7 +305,13 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
             b = self._installer.par.Colorb.eval()
 
         # Update registry - this triggers all dependent expressions
+        
         self.Properties['color'] = [r, g, b]
+
+        if self.fam_registry:
+            debug(f'attempting to update family color for {self.Properties["family_name"]}')
+            self.fam_registry.UpdateFamilyColor(self.Properties['family_name'], self.Properties['color'])
+
 
     def Namingconvention(self, pattern=None):
         """

@@ -25,7 +25,6 @@ FileLoader = mod('src/file_loader').FileLoader
 ConfigManager = mod('src/config_system').ConfigManager
 StubManager = mod('src/stub_system').StubManager
 UpdateManager = mod('src/update_system').UpdateManager
-UIInjector = mod('src/ui_injection').UIInjector
 
 
 class OpFamCreateExt:
@@ -209,7 +208,7 @@ class OpFamCreateExt:
         return self.Properties.getDependency('folder_cache')
 
     @property
-    def shortcut_comp(self):
+    def ShortcutComp(self):
         """Get the component that receives the op shortcut. Override in extension."""
         return self.ownerComp
 
@@ -233,7 +232,7 @@ class OpFamCreateExt:
         self.ownerComp.expose = self.expose
         self.ownerComp.nodeX = self.node_x
         self.ownerComp.nodeY = self.node_y
-        self.shortcut_comp.par.opshortcut = self.FamilyName.val
+        self.ShortcutComp.par.opshortcut = self.FamilyName.val
 
         if self.ownerComp.par.Install == 1:
             if not self.fam_registry.IsFamilyInstalled(self.FamilyName.val):

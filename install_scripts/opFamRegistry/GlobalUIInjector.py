@@ -79,25 +79,18 @@ class GlobalUIInjector:
 			self._update_eval4()
 			self._update_colors_table()
 
-			# Check if any custom families remain
+			# Update and cleanup global scripts
+			self._modify_launch_menu()
+			self._modify_create_node()
+			self._modify_search_exec()
+			
+			# Check if any custom families remain for specific cleanup
 			if not self.owner.InstalledFams:
-				# If no families left, restore launch_menu and cleanup global scripts
-				launch_menu_op = menuOp.op('launch_menu_op')
-				if launch_menu_op:
-					code = launch_menu_op.text
-					key = "if($type != \"none\")\n\tcvar menu_type=$type\n\trun set_last_node_type\n\tset type = $lasttype"
-					replacement = 'if($type != "none")'
-					launch_menu_op.text = code.replace(key, replacement)
-
 				if menuOp.op('set_last_node_type'):
 					menuOp.op('set_last_node_type').destroy()
 			else:
 				# If families remain, just update the script
 				self._setup_last_node_type()
-
-			# self._modify_launch_menu() # launch menu doesn't need refresh on uninstall usually
-			self._modify_create_node()
-			self._modify_search_exec()
 
 		except Exception as e:
 			debug(f'Error uninstalling UI for family {family_name}: {e}')
@@ -256,10 +249,22 @@ elif(source == 'input' and ({compatible_check})):
 
 		code = launch_menu_op.text
 		key = 'if($type != "none")'
-		replacement = f"{key}\n\tcvar menu_type=$type\n\trun set_last_node_type\n\tset type = $lasttype"
+		
+		# 1. Clean up marker block if exists
+		import re
+		if '# OPFAM_START' in code and '# OPFAM_END' in code:
+			# Remove the block AND the preceding newline we likely added
+			# The injection adds: \n\t# OPFAM_START...
+			pattern = r"\n\s*# OPFAM_START\n.*?\n\s*# OPFAM_END"
+			code = re.sub(pattern, "", code, flags=re.DOTALL)
 
-		if 'run set_last_node_type' not in code:
-			launch_menu_op.text = code.replace(key, replacement)
+		# 2. Inject if we have families
+		if self.owner.InstalledFams:
+			if key in code and '# OPFAM_START' not in code:
+				replacement = f"{key}\n\t# OPFAM_START\n\tcvar menu_type=$type\n\trun set_last_node_type\n\tset type = $lasttype\n\t# OPFAM_END"
+				code = code.replace(key, replacement)
+		
+		launch_menu_op.text = code
 
 	def _modify_create_node(self):
 		"""Modify create_node script to skip creation for custom families (handled by inject scripts)."""
@@ -269,29 +274,45 @@ elif(source == 'input' and ({compatible_check})):
 			return
 
 		text = createNode.text
-		import re
-		# Remove any existing injected family blocks
-		text = re.sub(r"if\(\$type=='[^']+'\)\s+exit\s+endif\n?", "", text)
 		
+		# 1. Clean up legacy injections (regex)
+		import re
+		text = re.sub(r"if\(\$type=='[^']+'\)\s+exit\s+endif\n?", "", text)
+
+		# 2. Handle Marker-based injection
 		insertion_key = 'set type = `tab("current",0,0)`\n'
-		if insertion_key not in text:
-			return
+		start_marker = "# OPFAM_START\n"
+		end_marker = "# OPFAM_END\n"
+
+		# Remove existing marker block
+		if start_marker in text and end_marker in text:
+			pattern = re.escape(start_marker) + r".*?" + re.escape(end_marker)
+			# Here we might need similar logic, but let's check validation first.
+			# Previous logic: re.sub(pattern, "", text)
+			# If pattern includes newline at end, and we replace with "", we effectively remove the block.
+			# But if we want to be safe:
+			text = re.sub(pattern, "", text, flags=re.DOTALL)
 
 		# Build new block
-		if not self.owner.InstalledFams:
+		new_block = ""
+		if self.owner.InstalledFams:
+			new_block = start_marker
+			for fam_name in self.owner.InstalledFams.keys():
+				new_block += f"if($type=='{fam_name}')\n\texit\nendif\n"
+			new_block += end_marker
+
+		# Insert new block
+		if new_block:
+			if insertion_key in text:
+				index = text.index(insertion_key)
+				createNode.text = (
+					text[:index + len(insertion_key)]
+					+ new_block
+					+ text[index + len(insertion_key):]
+				)
+		else:
 			createNode.text = text
-			return
 
-		insert_code = ""
-		for fam_name in self.owner.InstalledFams.keys():
-			insert_code += f"if($type=='{fam_name}')\n\texit\nendif\n"
-
-		index = text.index(insertion_key)
-		createNode.text = (
-			text[:index + len(insertion_key)]
-			+ insert_code
-			+ text[index + len(insertion_key):]
-		)
 
 	def _modify_search_exec(self):
 		"""Modify search panel exec to handle custom families."""
@@ -302,33 +323,68 @@ elif(source == 'input' and ({compatible_check})):
 
 		text = searchExec.text
 		import re
-		# Remove any existing injected family blocks
-		pattern = r"\t\t\tif\(op\('/ui/dialogs/menu_op/current'\)\[0,0\]\.val=='[^']+'\):\n\t\t\t\tparent\.OPCREATE\.op\('nodetable'\)\.clickID\(-?\d+\)\n\t\t\t\treturn\n"
-		text = re.sub(pattern, "", text)
+
+		# 1. Clean up legacy injections (regex)
+		pattern_legacy = r"\t\t\tif\(op\('/ui/dialogs/menu_op/current'\)\[0,0\]\.val=='[^']+'\):\n\t\t\t\tparent\.OPCREATE\.op\('nodetable'\)\.clickID\(-?\d+\)\n\t\t\t\treturn\n"
+		text = re.sub(pattern_legacy, "", text)
+
+		# 2. Handle Marker-based injection
+		key = "if parent.OPCREATE.op('nodetable/destil').numRows > 1:\n"
+		start_marker = "\t\t\t# OPFAM_START\n"
+		end_marker = "\t\t\t# OPFAM_END\n"
+
+		# Remove existing marker block
+		if "# OPFAM_START" in text and "# OPFAM_END" in text:
+			# Use flexible regex for marker removal to account for indentation
+			pattern_marker = r"\s*# OPFAM_START\n.*?\s*# OPFAM_END\n"
+			# Replace with a single newline to preserve spacing logic?
+			# Actually if we used \s* it might have eaten the newline before the block.
+			# Let's replace with empty string but be careful about the regex.
+			# If we use \s+ it eats the preceding newline.
+			# If we look at the result 'AB' from 'A\n\tB', it means we lost the newline.
+			# So we should probably replace with nothing BUT ensure regex only matches from start of line?
+			# Or easier: replace with "\n" if we consumed the newline.
+			text = re.sub(pattern_marker, "\n", text, flags=re.DOTALL)
 
 		# Build new block
-		if not self.owner.InstalledFams:
-			searchExec.text = text
-			return
-
-		fam_names = list(self.owner.InstalledFams.keys())
-		fam_list_str = str(fam_names)
-		
-		new_code = (
-			f"\t\t\tif(op('/ui/dialogs/menu_op/current')[0,0].val in {fam_list_str}):\n"
-			f"\t\t\t\tparent.OPCREATE.op('nodetable').clickID(-8358)\n"
-			f"\t\t\t\treturn\n"
-		)
-
-		key = "if parent.OPCREATE.op('nodetable/destil').numRows > 1:\n"
-		if key in text:
-			index = text.index(key)
-			searchExec.text = (
-				text[:index + len(key)]
-				+ new_code
-				+ text[index + len(key):]
+		new_block = ""
+		if self.owner.InstalledFams:
+			fam_names = list(self.owner.InstalledFams.keys())
+			fam_list_str = str(fam_names)
+			
+			new_block = (
+				f"{start_marker}"
+				f"\t\t\tif(op('/ui/dialogs/menu_op/current')[0,0].val in {fam_list_str}):\n"
+				f"\t\t\t\tparent.OPCREATE.op('nodetable').clickID(-8358)\n"
+				f"\t\t\t\treturn\n"
+				f"{end_marker}"
 			)
+
+		# Insert new block
+		# Insert new block
+		if new_block:
+			# More robust regex search for the key line
+			# matches "if parent...numRows > 1:" with any whitespace
+			match = re.search(r"if\s+parent\.OPCREATE\.op\('nodetable/destil'\)\.numRows\s*>\s*1:", text)
+			
+			if match:
+				end_idx = match.end()
+				# Check if there is a newline after match, if not, careful
+				if end_idx < len(text) and text[end_idx] == '\n':
+					end_idx += 1 # Include the newline
+				elif end_idx < len(text) and text[end_idx] == '\r': # Handle CRLF potentially
+					if end_idx+1 < len(text) and text[end_idx+1] == '\n':
+						end_idx += 2
+					else:
+						end_idx += 1
+				
+				searchExec.text = (
+					text[:end_idx]
+					+ new_block
+					+ text[end_idx:]
+				)
 		else:
+			# If no new block (no families), just save the cleaned text
 			searchExec.text = text
 
 	# ==================== Per-Family Helpers ====================
@@ -453,16 +509,29 @@ elif(source == 'input' and ({compatible_check})):
 		if len(color_val) < 4:
 			color_val = color_val + [1.0] * (4 - len(color_val))
 
-		for o in family_owner.findChildren():
-			if 'License' not in o.name and o.OPType != 'annotateCOMP':
-				try:
-					o.color = color_val
-				except:
-					pass
+		# Operator .color expects 3 elements (RGB)
+		rgb_color = color_val[:3]
+
+		# Operator .color expects 3 elements (RGB)
+		rgb_color = color_val[:3]
+
 		try:
-			family_owner.color = color_val
+			family_owner.color = rgb_color
 		except:
 			pass
+
+		# Update Opcomp (custom operators container) if it exists
+		if hasattr(family_owner.par, 'Opcomp'):
+			custom_ops = family_owner.par.Opcomp.eval()
+			if custom_ops:
+				try:
+					custom_ops.color = rgb_color
+					# Update children of custom_ops (excluding annotate)
+					for comp in custom_ops.findChildren(type=COMP, maxDepth=1):
+						if comp.OPType != 'annotateCOMP':
+							comp.color = rgb_color
+				except:
+					pass
 
 
 	def update_family_name(self, old_name, new_name):

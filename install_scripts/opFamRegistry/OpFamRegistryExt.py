@@ -62,16 +62,40 @@ class OpFamRegistryExt:
 			self.EventEmitter.Emit('FamilyRenamed', old_name, new_name, family_owner)
 			debug(f'Family renamed: {old_name} -> {new_name}')
 
+		# Collect family owner from either list
+		family_owner = None
 		if old_name in self.RegisteredFams:
 			family_owner = self.RegisteredFams[old_name]
 			del self.RegisteredFams[old_name]
 			self.RegisteredFams.setItem(new_name, family_owner)
 
 		if old_name in self.InstalledFams:
-			family_owner = self.InstalledFams[old_name]
+			family_owner = self.InstalledFams[old_name] # Should be same object
 			del self.InstalledFams[old_name]
 			self.InstalledFams.setItem(new_name, family_owner)
+			
+			# Only update global UI if installed
 			self.global_ui_injector.update_family_name(old_name, new_name)
+
+		# Update properties and shortcut if we found the family owner (installed or not)
+		if family_owner:
+			if hasattr(family_owner, 'Properties'):
+				family_owner.Properties['family_name'] = new_name
+			
+			if hasattr(family_owner, 'ShortcutComp'):
+				comp = family_owner.ShortcutComp
+				if comp:
+					comp.par.opshortcut = new_name
+	
+	def UpdateFamilyColor(self, fam_name, new_color):
+		"""Update family color in UI elements."""
+		if fam_name in self.InstalledFams:
+			# Update local property first (if not already done by caller)
+			family_owner = self.InstalledFams[fam_name]
+			# The caller (OpFamExt) usually updates its own property, but we ensure consistency here if needed.
+			# But typically caller calls this AFTER updating property.
+			
+			self.global_ui_injector.update_family_color(fam_name, new_color)
 
 	def onRegistryChangeCallback(self, cells, prev):
 		for idx, _cell in enumerate(cells):
