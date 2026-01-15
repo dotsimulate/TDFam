@@ -23,8 +23,6 @@ from TDStoreTools import DependDict
 
 FileLoader = mod('src/file_loader').FileLoader
 ConfigManager = mod('src/config_system').ConfigManager
-StubManager = mod('src/stub_system').StubManager
-UpdateManager = mod('src/update_system').UpdateManager
 
 
 class OpFamCreateExt:
@@ -100,8 +98,6 @@ class OpFamCreateExt:
         # Initialize subsystems (they read from Properties)
         self.file_loader = FileLoader(self)
         self.config = ConfigManager(self)
-        self.stubs = StubManager(self)
-        self.updates = UpdateManager(self)
 
         # Ensure config tables exist with proper headers
         self.config.ensure_tables_exist()
@@ -308,8 +304,7 @@ class OpFamCreateExt:
                      'suffix' - {opname}{Family} (e.g., agentLOP)
                      'name' - just operator name as tag
         """
-        tag_operators = mod('src/tag_helpers').tag_operators
-        tag_operators(self, pattern)
+        self.fam_registry.TagManager.tag_operators(self, pattern)
 
     def selfDestroy(self):
         """Destroy the installer component."""
@@ -525,13 +520,13 @@ class OpFamCreateExt:
 
     def Updateall(self):
         """Update all family operators (with UI confirmation)."""
-        operators = self.updates.find_family_operators()
+        operators = self.fam_registry.UpdateManager.find_family_operators(self)
 
         if not operators:
             ui.messageBox("No Operators Found", f"No {self.FamilyName.val} operators found.", buttons=["OK"])
             return
 
-        analysis = self.updates.analyze_operators(operators)
+        analysis = self.fam_registry.UpdateManager.analyze_operators(self, operators)
 
         if analysis['without_matches']:
             warning = f"{len(analysis['without_matches'])} operators cannot be matched.\n"
@@ -546,7 +541,7 @@ class OpFamCreateExt:
         if choice != 0:
             return
 
-        results = self.updates.update_batch(analysis['updateable'])
+        results = self.fam_registry.UpdateManager.update_batch(self, analysis['updateable'])
 
         summary = f"Updated: {len(results['updated'])}\n"
         summary += f"Skipped: {len(results['skipped'])}\n"

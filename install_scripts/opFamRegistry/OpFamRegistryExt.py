@@ -1,6 +1,9 @@
 from __future__ import annotations
 from TDStoreTools import DependDict
 from GlobalUIInjector import GlobalUIInjector
+from TagManager import TagManager
+from StubManager import StubManager
+from UpdateManager import UpdateManager
 
 class OpFamRegistryExt:
 	def __init__(self, ownerComp):
@@ -9,6 +12,11 @@ class OpFamRegistryExt:
 		self.InstalledFams = DependDict({})
 		self.EventEmitter = self.ownerComp.op('eventEmitter')
 		self.global_ui_injector = GlobalUIInjector(self.ownerComp, self)
+		
+		# Initialize Helper Systems
+		self.TagManager = TagManager(self.ownerComp)
+		self.StubManager = StubManager(self.ownerComp, self)
+		self.UpdateManager = UpdateManager(self.ownerComp, self)
 #
 	def RegisterFamily(self, family_owner : OpFamCreateExt):
 		fam_name = family_owner.Properties['family_name']

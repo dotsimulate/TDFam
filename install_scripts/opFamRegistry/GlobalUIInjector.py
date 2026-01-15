@@ -16,7 +16,6 @@ class GlobalUIInjector:
 
 	def install(self, family_name, family_owner):
 		"""Install all required UI injections for a new family"""
-		print(f"Installing UI for family: {family_name}")
 		try:
 			# 1. Per-family (Incremental)
 			self._update_compatible_table(family_name, family_owner)
@@ -40,7 +39,6 @@ class GlobalUIInjector:
 
 	def uninstall(self, family_name):
 		"""Uninstall UI injections for a specific family"""
-		print(f"Uninstalling UI for family: {family_name}")
 		try:
 			menuOp = self.menu_op
 			nodeTable = self.nodeTable
@@ -537,7 +535,6 @@ elif(source == 'input' and ({compatible_check})):
 		Update family name in UI elements.
 		Rebuilds global scripts and renames per-family elements.
 		"""
-		print(f"Updating UI for family name change: {old_name} -> {new_name}")
 		try:
 			menuOp = self.menu_op
 			nodeTable = self.nodeTable
@@ -576,7 +573,6 @@ elif(source == 'input' and ({compatible_check})):
 		Update family color in UI elements.
 		Updates the colors table and family owner children.
 		"""
-		print(f"Updating UI color for family: {family_name}")
 		try:
 			# 1. Update colors table (global rebuild is easiest to keep in sync)
 			self._update_colors_table()
