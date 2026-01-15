@@ -430,20 +430,26 @@ class OpFamCreateExt:
 
     # ==================== Stub API ====================
 
-    def Createstubs(self):
-        """Create stubs for all family operators (with UI confirmation)."""
-        operators = self.stubs.find_family_operators()
+    def CreateStubs(self, comp=None):
+        """
+        Create stubs for family operators (with UI confirmation).
+        
+        Args:
+            comp: Optional COMP to restrict search scope.
+        """
+        operators = self.fam_registry.StubManager.find_family_operators(self, comp)
 
         if not operators:
+            scope = f"in {comp.path}" if comp else "in project"
             ui.messageBox(
                 f"No {self.FamilyName.val} Operators Found",
-                f"No {self.FamilyName.val} operators found to create stubs.",
+                f"No {self.FamilyName.val} operators found {scope} to create stubs.",
                 buttons=["OK"]
             )
             return
 
         # Check for missing type tags
-        has_operator_type_tag = mod('src/tag_helpers').has_operator_type_tag
+        has_operator_type_tag = self.fam_registry.TagManager.has_operator_type_tag
         category_tags = self._call_hook('_GetCategoryTags') or set()
         ops_without_tags = [
             c for c in operators
@@ -462,17 +468,24 @@ class OpFamCreateExt:
         if choice != 0:
             return
 
-        stubs = self.stubs.create_stubs_batch(operators)
+
+        stubs = self.fam_registry.StubManager.create_stubs_batch(self, operators)
         ui.messageBox('Stubs Created', f"Created {len(stubs)} stub(s).", buttons=["OK"])
 
-    def Replacestubs(self):
-        """Replace all stubs with full operators (with UI confirmation)."""
-        stubs = self.stubs.find_stubs()
+    def ReplaceStubs(self, comp=None):
+        """
+        Replace stubs with full operators (with UI confirmation).
+        
+        Args:
+            comp: Optional COMP to restrict search scope.
+        """
+        stubs = self.fam_registry.StubManager.find_stubs(self, comp)
 
         if not stubs:
+            scope = f"in {comp.path}" if comp else "in project"
             ui.messageBox(
                 f"No {self.FamilyName.val} Stubs Found",
-                f"No {self.FamilyName.val} stubs found.",
+                f"No {self.FamilyName.val} stubs found {scope}.",
                 buttons=["OK"]
             )
             return
@@ -482,10 +495,10 @@ class OpFamCreateExt:
         if choice != 0:
             return
 
-        regenerated = self.stubs.replace_stubs_batch(stubs)
+        regenerated = self.fam_registry.StubManager.replace_stubs_batch(self, stubs)
         ui.messageBox('Regeneration Complete', f"Regenerated {len(regenerated)} operator(s).", buttons=["OK"])
 
-    def CreatestubFor(self, operator_path):
+    def CreateStubFor(self, operator_path):
         """Create stub for a single operator."""
         comp = op(operator_path)
         if not comp:
@@ -498,32 +511,52 @@ class OpFamCreateExt:
             return None
 
         ui.undo.startBlock(f'Create Stub for {comp.name}')
-        stub = self.stubs.create_stub(comp)
+        stub = self.fam_registry.StubManager.create_stub(self, comp)
         comp.destroy()
         ui.undo.endBlock()
 
         return stub
 
-    def ReplacestubFor(self, stub_path):
+    def ReplaceStubFor(self, stub_path):
         """Replace a single stub with full operator."""
         stub = op(stub_path)
         if not stub:
             return None
 
         ui.undo.startBlock(f'Replace Stub {stub.name}')
-        new_comp = self.stubs.replace_stub(stub)
+        new_comp = self.fam_registry.StubManager.replace_stub(self, stub)
         ui.undo.endBlock()
 
         return new_comp
 
     # ==================== Update API ====================
 
-    def Updateall(self):
-        """Update all family operators (with UI confirmation)."""
-        operators = self.fam_registry.UpdateManager.find_family_operators(self)
+    def UpdateOp(self, target):
+        """
+        Update a single operator to latest version.
+        
+        Args:
+            target: Operator or path.
+        """
+        if isinstance(target, str):
+            target = op(target)
+        if not target:
+            return None
+            
+        return self.fam_registry.UpdateManager.update_operator(self, target)
+
+    def UpdateOperators(self, comp=None):
+        """
+        Update family operators (with UI confirmation).
+        
+        Args:
+            comp: Optional COMP to restrict search scope.
+        """
+        operators = self.fam_registry.UpdateManager.find_family_operators(self, comp)
 
         if not operators:
-            ui.messageBox("No Operators Found", f"No {self.FamilyName.val} operators found.", buttons=["OK"])
+            scope = f"in {comp.path}" if comp else "in project"
+            ui.messageBox("No Operators Found", f"No {self.FamilyName.val} operators found {scope}.", buttons=["OK"])
             return
 
         analysis = self.fam_registry.UpdateManager.analyze_operators(self, operators)
@@ -547,6 +580,11 @@ class OpFamCreateExt:
         summary += f"Skipped: {len(results['skipped'])}\n"
         summary += f"Errors: {len(results['errors'])}"
         ui.messageBox('Update Complete', summary, buttons=["OK"])
+        return results['updated']
+
+    def UpdateAll(self):
+        """Update all family operators (Backwards compatibility)."""
+        return self.UpdateOperators(None)
 
     # ==================== Hooks ====================
 

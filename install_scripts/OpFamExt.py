@@ -350,8 +350,9 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
             return None
         if isinstance(target, str):
             target = op(target)
-        debug(f'calling fam_registry.StubManager.create_stub')
-        return self.fam_registry.StubManager.create_stub(self, target)
+        if isinstance(target, str):
+            target = op(target)
+        return super().CreateStubFor(target)
 
     def Replacestubop(self, stub=None):
         """
@@ -370,7 +371,9 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
             return None
         if isinstance(stub, str):
             stub = op(stub)
-        return self.fam_registry.StubManager.replace_stub(self, stub)
+        if isinstance(stub, str):
+            stub = op(stub)
+        return super().ReplaceStubFor(stub)
 
     def Updateop(self, target=None):
         """
@@ -389,7 +392,9 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
             return None
         if isinstance(target, str):
             target = op(target)
-        return self.fam_registry.UpdateManager.update_operator(self, target)
+        if isinstance(target, str):
+            target = op(target)
+        return super().UpdateOp(target)
 
     # --- Stubs for comp/network ---
 
@@ -413,19 +418,11 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         if isinstance(comp, str):
             comp = op(comp)
 
-        operators = self.fam_registry.StubManager.find_family_operators(self, comp)
-        if not operators:
-            ui.messageBox('No Operators', f'No {self.Properties["family_name"]} operators found in {comp.path}', buttons=['OK'])
-            return []
+        if isinstance(comp, str):
+            comp = op(comp)
 
-        message = f"Create stubs for {len(operators)} operators in {comp.path}?"
-        choice = ui.messageBox('Create Stubs', message, buttons=['Create', 'Cancel'])
-        if choice != 0:
-            return []
-
-        stubs = self.fam_registry.StubManager.create_stubs_batch(self, operators)
-        ui.messageBox('Stubs Created', f"Created {len(stubs)} stub(s).", buttons=["OK"])
-        return stubs
+        # Use refined base method with scope
+        return super().CreateStubs(comp)
 
     def Replacestubscomp(self, comp=None):
         """
@@ -447,19 +444,11 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         if isinstance(comp, str):
             comp = op(comp)
             
-        stubs = self.fam_registry.StubManager.find_stubs(self, comp)
-        if not stubs:
-            ui.messageBox('No Stubs', f'No {self.Properties["family_name"]} stubs found in {comp.path}', buttons=['OK'])
-            return []
-
-        message = f"Replace {len(stubs)} stubs in {comp.path}?"
-        choice = ui.messageBox('Replace Stubs', message, buttons=['Replace', 'Cancel'])
-        if choice != 0:
-            return []
-        regenerated = self.fam_registry.StubManager.replace_stubs_batch(self, stubs)
-        
-        ui.messageBox('Stubs Replaced', f"Replaced {len(regenerated)} stub(s).", buttons=["OK"])
-        return regenerated
+        if isinstance(comp, str):
+            comp = op(comp)
+            
+        # Use refined base method with scope
+        return super().ReplaceStubs(comp)
 
     def Updateopcomp(self, comp=None):
         """
@@ -481,30 +470,11 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         if isinstance(comp, str):
             comp = op(comp)
 
-        operators = self.fam_registry.UpdateManager.find_family_operators(self, comp)
-        if not operators:
-            ui.messageBox('No Operators', f'No {self.Properties["family_name"]} operators found in {comp.path}', buttons=['OK'])
-            return []
-            
-        analysis = self.fam_registry.UpdateManager.analyze_operators(self, operators)
-        
-        if analysis['without_matches']:
-            warning = f"{len(analysis['without_matches'])} operators cannot be matched.\nThey will be skipped. Continue?"
-            choice = ui.messageBox('Missing Matches', warning, buttons=['Continue', 'Cancel'])
-            if choice != 0:
-                return []
-        
-        updateable = len(analysis['updateable'])
-        message = f"Update {updateable} operators in {comp.path}?"
-        choice = ui.messageBox('Update Operators', message, buttons=['Update', 'Cancel'])
-        if choice != 0:
-            return []
+        if isinstance(comp, str):
+            comp = op(comp)
 
-        results = self.fam_registry.UpdateManager.update_batch(self, analysis['updateable'])
-        
-        summary = f"Updated: {len(results['updated'])}\nSkipped: {len(results['skipped'])}\nErrors: {len(results['errors'])}"
-        ui.messageBox('Update Complete', summary, buttons=["OK"])
-        return results['updated']
+        # Use refined base method with scope
+        return super().UpdateOperators(comp)
 
     # --- Stubs for ALL ---
 
@@ -515,19 +485,7 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         Returns:
             List of created stubs
         """
-        operators = self.fam_registry.StubManager.find_family_operators(self)
-        if not operators:
-            ui.messageBox('No Operators', f'No {self.Properties["family_name"]} operators found in project', buttons=['OK'])
-            return []
-
-        message = f"Create stubs for {len(operators)} operators in project?"
-        choice = ui.messageBox('Create All Stubs', message, buttons=['Create', 'Cancel'])
-        if choice != 0:
-            return []
-            
-        stubs = self.fam_registry.StubManager.create_stubs_batch(self, operators)
-        ui.messageBox('Stubs Created', f"Created {len(stubs)} stub(s).", buttons=["OK"])
-        return stubs
+        return super().CreateStubs()
 
     def Replacestuball(self):
         """
@@ -536,19 +494,7 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         Returns:
             List of replaced COMPs
         """
-        stubs = self.fam_registry.StubManager.find_stubs(self)
-        if not stubs:
-            ui.messageBox('No Stubs', f'No {self.Properties["family_name"]} stubs found in project', buttons=['OK'])
-            return []
-
-        message = f"Replace {len(stubs)} stubs in project?"
-        choice = ui.messageBox('Replace All Stubs', message, buttons=['Replace', 'Cancel'])
-        if choice != 0:
-            return []
-
-        regenerated = self.fam_registry.StubManager.replace_stubs_batch(self, stubs)
-        ui.messageBox('Stubs Replaced', f"Replaced {len(regenerated)} stub(s).", buttons=["OK"])
-        return regenerated
+        return super().ReplaceStubs()
 
     def Updateall(self):
         """
