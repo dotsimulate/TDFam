@@ -512,7 +512,6 @@ class OpFamCreateExt:
 
         ui.undo.startBlock(f'Create Stub for {comp.name}')
         stub = self.fam_registry.StubManager.create_stub(self, comp)
-        comp.destroy()
         ui.undo.endBlock()
 
         return stub

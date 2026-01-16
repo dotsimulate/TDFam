@@ -68,12 +68,11 @@ class StubManager:
 		op_type = self.registry.TagManager.get_operator_type(comp, family_name, category_tags)
 
 		print(f"createStub: Creating stub for {comp.path} with type '{op_type}'")
-
-		print(f"createStub: Creating stub for {comp.path} with type '{op_type}'")
 		
 		# Capture children params before destruction
 		children_params = self._capture_children_params(comp)
-		comp.store('children_params', children_params)
+		# TODO: call hook with children_params
+		# comp.store('children_params', children_params)
 
 		# Remove all children except ins and outs
 		children = comp.findChildren(depth=1)
@@ -299,7 +298,6 @@ class StubManager:
 			new_comp = master_op
 		else:
 			new_comp = target_parent.copy(master_op)
-
 		if not new_comp:
 			raise Exception(f"replaceStub: Failed to create new component for {stub.path}")
 
