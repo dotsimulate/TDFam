@@ -164,9 +164,9 @@ def onValueChange(panelValue, prev):
     # result is True or 'nohook' - proceed with placement
 
     # Get operator source - supports both embedded and file-based loading
-    source_result = None
-    if hasattr(installer, 'Getoperatorsource'):
-        source_result = installer.Getoperatorsource(lookup_name)
+    source_result = op.FAMREGISTRY.FileManager.get_operator_source(
+        _get_family(), lookup_name
+    )
 
     clone = None
     is_file_based = False

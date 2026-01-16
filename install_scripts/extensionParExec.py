@@ -1,28 +1,33 @@
-# This is a callback system for parameters.
-# to use:
-#	- create a function in ParCallbacksExt/ParCallbacks
-#	  using the same name as the parameter.
+# Parameter callbacks - checks onPar{name} first, then direct method
 
 def onValueChange(par, val, prev):
-	comp = op(me.par.op)
+	ext = op(me.par.op).ext.OpFamExt
 	name = par.name
 
-	# Try exact match first
-	if hasattr(comp, name):
-		getattr(comp, name)()
+	handler = f'onPar{name}'
+	if hasattr(ext, handler):
+		getattr(ext, handler)()
 		return
 
-	# Try stripping RGB/RGBA suffix (Colorr -> Color)
 	if len(name) > 1 and name[-1] in 'rgba':
-		base_name = name[:-1]
-		if hasattr(comp, base_name):
-			getattr(comp, base_name)()
+		base_handler = f'onPar{name[:-1]}'
+		if hasattr(ext, base_handler):
+			getattr(ext, base_handler)()
 			return
 
+	if hasattr(ext, name):
+		getattr(ext, name)()
+
 def onPulse(par):
-	comp = op(me.par.op)
-	if hasattr(comp, par.name):
-		getattr(comp, par.name)()
+	ext = op(me.par.op).ext.OpFamExt
+
+	handler = f'onPar{par.name}'
+	if hasattr(ext, handler):
+		getattr(ext, handler)()
+		return
+
+	if hasattr(ext, par.name):
+		getattr(ext, par.name)()
 
 def onExpressionChange(par, val, prev):
 	comp = op(me.par.op)
@@ -36,4 +41,3 @@ def onExportChange(par, val, prev):
 
 def onEnableChange(par, val, prev):
 	return
-	

@@ -1,37 +1,21 @@
 """
-OpFamExt - Middle class extension for opfam-create with integrated callbacks.
+OpFamExt - Main extension for operator family installers.
 
-This extension lives on the install_scripts COMP and provides:
-- Chained callback system (extension + DAT both called)
-- Clean public API with exposed methods
-- Parameter binding to existing parameters on install_scripts
+This is the primary extension class for opfam-create operator families.
+It manages parameter bindings, UI confirmations, and callback orchestration.
 
-Expected parameters on install_scripts:
-    Family page:
-        - Family (str): Family name
-        - Install (toggle): Install/uninstall toggle
-        - Color (rgb): Family color
-        - Index (int): Menu index position
-        - Opcomp (COMP): Embedded operators container
-        - Opfolder (folder): Path to external .tox files
+For developers creating custom operator families:
+    - This file is relatively safe to edit for advanced customization
+    - However, callbacks are the preferred way to inject custom logic
+    - Implement callbacks in the DAT referenced by par.Callbackdat
+    - Other opfam-create code (installer.py, OpFamRegistry, etc.) should be left untouched
 
-    Stubs page:
-        - Createstuball (pulse): Create stubs for all operators
-        - Replacestuball (pulse): Replace all stubs
-        - Updateall (pulse): Update all operators
-        - Targetop (str): Target operator path
-        - Createstubop (pulse): Create stub for target op
-        - Replacestubop (pulse): Replace stub for target op
-        - Updateop (pulse): Update target operator
-        - Targetcomp (str): Target comp path
-        - Createstubcomp (pulse): Create stubs in comp
-        - Replacestubcomp (pulse): Replace stubs in comp
-        - Updateopsincomp (pulse): Update ops in comp
-
-Usage:
-    # No-code: just use parameters + callback DAT on install_scripts
-    # Light wrapper: subclass OpFamExt, call super().__init__(ownerComp)
-    # Expert: use SetAssignedCallback('onPlaceOp', self._my_handler) for programmatic callbacks
+Available Callbacks (implement in par.Callbackdat):
+    Installation:   onPreInstall, onPostInstall, onPreUninstall, onPostUninstall
+    Placement:      onPlaceOp, onPostPlaceOp
+    Stubs:          onPreStub, onPostStub, onPreReplace, onPostReplace
+    Updates:        onPreUpdate, onPostUpdate, onPreserveSpecialParams
+    Configuration:  onGetExcludedTags, onGetCategoryTags, onCaptureChildrenParams
 """
 
 OpFamCreateExt = mod('installer').OpFamCreateExt
@@ -39,103 +23,66 @@ ChainedCallbacksExt = mod('src/chained_callbacks').ChainedCallbacksExt
 
 
 class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
-    """
-    Middle class extension providing callbacks and API for operator families.
-
-    Inherits core logic from OpFamCreateExt and adds:
-    - Chained callback system (both assigned + DAT callbacks run)
-    - Clean exposed API bound to parameters
-    """
 
     def __init__(self, ownerComp, auto_init=True):
-        """
-        Initialize OpFamExt.
-
-        Args:
-            ownerComp: The install_scripts COMP
-            auto_init: If True, read from parameters and call super().__init__
-                       If False, skip for manual initialization by subclass
-        """
         self.ownerComp = ownerComp
 
-        # install_scripts IS where the parameters live
-        self._installer = ownerComp
-
         if auto_init:
-            # Initialize ChainedCallbacksExt (provides callback system)
-            ChainedCallbacksExt.__init__(self, self._installer)
+            ChainedCallbacksExt.__init__(self, ownerComp)
 
-            # Initialize OpFamCreateExt with minimal defaults
-            # _sync_parameters() will update Properties from actual parameters
             OpFamCreateExt.__init__(
                 self,
-                ownerComp=self._installer,
-                family_name=self._installer.par.Family.eval(),
-                color=[0.5, 0.5, 0.5],  # Placeholder, updated by _sync_parameters
-                install_location=self._installer.parent()
+                ownerComp=ownerComp,
+                family_name=ownerComp.par.Family.eval(),
+                color=[0.5, 0.5, 0.5],
+                install_location=ownerComp.parent()
             )
 
-            # Sync all parameters to Properties registry (the real initialization)
             self._sync_parameters()
 
-            # Build folder cache now that operators_folder is set from parameters
             if self.operators_folder and not self.dynamic_refresh and self.fam_registry:
                 self.fam_registry.FileManager.refresh_cache(self.Properties['family_name'], self.operators_folder)
 
-        run(lambda: self.postInit(), delayFrames = 2)
+        run(lambda: self._post_init_ext(), delayFrames=2)
 
-    def postInit(self):
-        self.Install()
+    def _post_init_ext(self):
+        if self.ownerComp.par.Install.eval():
+            self._do_install()
 
     def _sync_parameters(self):
-        """Read parameters and update Properties registry."""
-        inst = self._installer
+        p = self.ownerComp.par
 
-        # Family page
-        if hasattr(inst.par, 'Family'):
-            self.Properties['family_name'] = inst.par.Family.eval()
-        if hasattr(inst.par, 'Colorr'):
-            self.Properties['color'] = [
-                inst.par.Colorr.eval(),
-                inst.par.Colorg.eval(),
-                inst.par.Colorb.eval()
-            ]
-        if hasattr(inst.par, 'Index'):
-            self.Properties['index'] = int(inst.par.Index.eval())
-        if hasattr(inst.par, 'Opcomp'):
-            self.Properties['operators_comp'] = inst.par.Opcomp.eval()
-        if hasattr(inst.par, 'Opfolder'):
-            self.Properties['operators_folder'] = inst.par.Opfolder.eval()
-        if hasattr(inst.par, 'Dynamicrefresh'):
-            self.Properties['dynamic_refresh'] = bool(inst.par.Dynamicrefresh.eval())
-        if hasattr(inst.par, 'Compatibletypes') and inst.par.Compatibletypes.eval():
-            types_str = inst.par.Compatibletypes.eval()
-            self.Properties['compatible_types'] = [t.strip() for t in types_str.split(',') if t.strip()]
-        if hasattr(inst.par, 'Namingconvention'):
-            self.Properties['naming_convention'] = inst.par.Namingconvention.eval()
+        if hasattr(p, 'Family'):
+            self.Properties['family_name'] = p.Family.eval()
+        if hasattr(p, 'Colorr'):
+            self.Properties['color'] = [p.Colorr.eval(), p.Colorg.eval(), p.Colorb.eval()]
+        if hasattr(p, 'Index'):
+            self.Properties['index'] = int(p.Index.eval())
+        if hasattr(p, 'Opcomp'):
+            self.Properties['operators_comp'] = p.Opcomp.eval()
+        if hasattr(p, 'Opfolder'):
+            self.Properties['operators_folder'] = p.Opfolder.eval()
+        if hasattr(p, 'Namingconvention'):
+            self.Properties['naming_convention'] = p.Namingconvention.eval()
+
+    # region Properties
 
     @property
     def index(self):
-        """Get menu index from Properties registry."""
         return self.Properties['index']
 
     @index.setter
     def index(self, value):
-        """Set menu index in Properties registry."""
         self.Properties['index'] = int(value)
-
-    # ==================== Shortcut Configuration ====================
 
     @property
     def shortcut_mode(self):
-        """Get Shortcutcomp parameter value (strmenu: me, parent(), parent(2))."""
-        if hasattr(self._installer.par, 'Shortcutcomp'):
-            return self._installer.par.Shortcutcomp.eval()
+        if hasattr(self.ownerComp.par, 'Shortcutcomp'):
+            return self.ownerComp.par.Shortcutcomp.eval()
         return 'me'
 
     @property
     def ShortcutComp(self):
-        """Get the component that receives the op shortcut based on Shortcutcomp parameter."""
         mode = self.shortcut_mode
         if mode == 'me':
             return self.ownerComp
@@ -146,17 +93,7 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         return self.ownerComp
 
     def get_installer_expr(self, fam_name):
-        """
-        Build expression path from shortcut target back to installer.
-
-        Args:
-            fam_name: Family name to use in expression
-
-        Returns:
-            Expression string like 'op.{family}' or 'op.{family}.op('{installer}')'
-        """
         mode = self.shortcut_mode
-
         if mode == 'me':
             return f'op.{fam_name}'
         elif mode == 'parent()':
@@ -164,286 +101,251 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         elif mode == 'parent(2)':
             parent_name = self.ownerComp.parent().name
             return f"op.{fam_name}.op('{parent_name}').op('{self.ownerComp.name}')"
-        return f'op.{fam_name}' 
+        return f'op.{fam_name}'
 
-    # ==================== Public API (Exposed Methods) ====================
-    # All methods accept optional args; if None, use parameter value
+    # endregion
 
-    def Install(self, install=None):
+    # region Exposed API
+
+    def Install(self, install: bool = None):
         """
-        Toggle installation based on Install parameter or argument.
+        Install or uninstall the family.
 
         Args:
             install: If None, uses Install parameter. If bool, installs/uninstalls.
         """
         if install is None:
-            install = self._installer.par.Install.eval()
+            install = self.ownerComp.par.Install.eval()
         if install:
-            super().Install()
+            self._do_install()
         else:
-            super().Uninstall()
+            self._do_uninstall()
 
-    def Family(self, name=None):
+    def ExportConfig(self, path: str = None):
         """
-        Update the family name and all associated UI elements.
+        Export config to JSON.
 
         Args:
-            name: New family name. If None, uses Family parameter value.
+            path: Output file path. If None, returns config dict.
+
+        Returns:
+            dict if no path, else (success, message)
         """
-        if name is None:
-            name = self._installer.par.Family.eval()
+        config = self._export_config(path)
+        return config
 
-        # Get old name before updating
+    def ImportConfig(self, source: str | dict):
+        """
+        Import config from JSON.
+
+        Args:
+            source: File path, JSON string, or dict
+
+        Returns:
+            (success, message)
+        """
+        success, message = self._import_config(source)
+        return success, message
+
+    def GetOperatorSource(self, lookup_name: str):
+        """
+        Get operator source for a given name.
+
+        Args:
+            lookup_name: Operator name (lowercase)
+
+        Returns:
+            ('embedded', op) or ('file', path) or None
+        """
+        return self._get_operator_source(lookup_name)
+
+    # endregion
+
+    # region Parameter Handlers
+
+    def onParInstall(self):
+        if self.ownerComp.par.Install.eval():
+            self._do_install()
+        else:
+            self._do_uninstall()
+
+    def onParFamily(self):
         old_name = self.Properties['family_name']
+        new_name = self.ownerComp.par.Family.eval()
+        if old_name != new_name:
+            if self.fam_registry:
+                self.fam_registry.UpdateFamilyName(old_name, new_name)
+            self.Properties['family_name'] = new_name
 
-        # Skip if no change
-        if old_name == name:
+    def onParColor(self):
+        p = self.ownerComp.par
+        color = [p.Colorr.eval(), p.Colorg.eval(), p.Colorb.eval()]
+        self.Properties['color'] = color
+        if self.fam_registry:
+            self.fam_registry.UpdateFamilyColor(self.Properties['family_name'], color)
+
+    def onParIndex(self):
+        self.Properties['index'] = int(self.ownerComp.par.Index.eval())
+
+    def onParOpcomp(self):
+        self.Properties['operators_comp'] = self.ownerComp.par.Opcomp.eval()
+
+    def onParOpfolder(self):
+        self.Properties['operators_folder'] = self.ownerComp.par.Opfolder.eval()
+        self._refresh_folder()
+
+    def onParShortcutcomp(self):
+        self.ShortcutComp.par.opshortcut = self.FamilyName.val
+
+    def onParNamingconvention(self):
+        self.Properties['naming_convention'] = self.ownerComp.par.Namingconvention.eval()
+        self._refresh_folder()
+
+    def onParColorfileops(self):
+        pass
+
+    def onParCreateopcomp(self):
+        comp, existing = self._create_opcomp()
+        if existing:
+            choice = ui.messageBox('Opcomp Exists',
+                f'par.Opcomp already references:\n{existing.path}\n\nReplace?',
+                buttons=['Replace', 'Keep Both', 'Cancel'])
+            if choice == 0:
+                self.ownerComp.par.Opcomp = comp
+                self.Properties['operators_comp'] = comp
+            elif choice == 2:
+                comp.destroy()
+                return
+        else:
+            if hasattr(self.ownerComp.par, 'Opcomp'):
+                self.ownerComp.par.Opcomp = comp
+            self.Properties['operators_comp'] = comp
+
+    def onParTagoperators(self):
+        self._tag_operators()
+
+    def onParCreatestubop(self):
+        target = self.ownerComp.par.Targetop.eval()
+        if target:
+            self._create_stub(target)
+
+    def onParReplacestubop(self):
+        target = self.ownerComp.par.Targetop.eval()
+        if target:
+            self._replace_stub(target)
+
+    def onParUpdateop(self):
+        target = self.ownerComp.par.Targetop.eval()
+        if target:
+            self._update_operator(target)
+
+    def onParCreatestubscomp(self):
+        comp = self.ownerComp.par.Targetcomp.eval()
+        if not comp:
+            return
+        operators = self._find_family_operators(comp)
+        if not operators:
+            ui.messageBox('No Operators', f'No {self.FamilyName.val} operators found.', buttons=['OK'])
+            return
+        self._create_stubs_batch(operators)
+
+    def onParReplacestubcomp(self):
+        comp = self.ownerComp.par.Targetcomp.eval()
+        if not comp:
+            return
+        stubs = self._find_stubs(comp)
+        if not stubs:
+            ui.messageBox('No Stubs', f'No {self.FamilyName.val} stubs found.', buttons=['OK'])
+            return
+        self._replace_stubs_batch(stubs)
+
+    def onParUpdatecomp(self):
+        comp = self.ownerComp.par.Targetcomp.eval()
+        if not comp:
+            return
+        operators = self._find_family_operators(comp)
+        if not operators:
+            ui.messageBox('No Operators', f'No {self.FamilyName.val} operators found.', buttons=['OK'])
+            return
+        self._update_with_ui(operators)
+
+    def onParCreatestuball(self):
+        operators = self._find_family_operators()
+        if not operators:
+            ui.messageBox('No Operators', f'No {self.FamilyName.val} operators found.', buttons=['OK'])
             return
 
-        # Update registry
-        if self.fam_registry:
-            self.fam_registry.UpdateFamilyName(old_name, name)
-        
-        self.Properties['family_name'] = name
+        untagged = self._check_missing_tags(operators)
+        if untagged:
+            choice = ui.messageBox('Missing Tags',
+                f'{len(untagged)} operators lack type tags. Proceed anyway?',
+                buttons=['Proceed', 'Cancel'])
+            if choice != 0:
+                return
 
-    def Color(self, r=None, g=None, b=None):
-        """
-        Set family color and update UI.
+        choice = ui.messageBox('Create Stubs',
+            f'Create stubs for {len(operators)} operator(s)?',
+            buttons=['Create', 'Cancel'])
+        if choice != 0:
+            return
 
-        Args:
-            r, g, b: Color values 0-1. If None, uses Color parameter values.
-        """
-        if r is None:
-            r = self._installer.par.Colorr.eval()
-        if g is None:
-            g = self._installer.par.Colorg.eval()
-        if b is None:
-            b = self._installer.par.Colorb.eval()
+        stubs = self._create_stubs_batch(operators)
+        ui.messageBox('Done', f'Created {len(stubs)} stub(s).', buttons=['OK'])
 
-        # Update registry - this triggers all dependent expressions
-        
-        self.Properties['color'] = [r, g, b]
+    def onParReplacestuball(self):
+        stubs = self._find_stubs()
+        if not stubs:
+            ui.messageBox('No Stubs', f'No {self.FamilyName.val} stubs found.', buttons=['OK'])
+            return
 
-        if self.fam_registry:
-            self.fam_registry.UpdateFamilyColor(self.Properties['family_name'], self.Properties['color'])
+        choice = ui.messageBox('Replace Stubs',
+            f'Regenerate {len(stubs)} operator(s)?',
+            buttons=['Regenerate', 'Cancel'])
+        if choice != 0:
+            return
 
+        regenerated = self._replace_stubs_batch(stubs)
+        ui.messageBox('Done', f'Regenerated {len(regenerated)} operator(s).', buttons=['OK'])
 
-    def Namingconvention(self, pattern=None):
-        """
-        Set the .tox filename naming convention pattern.
+    def onParUpdateall(self):
+        operators = self._find_family_operators()
+        if not operators:
+            ui.messageBox('No Operators', f'No {self.FamilyName.val} operators found.', buttons=['OK'])
+            return
+        self._update_with_ui(operators)
 
-        Args:
-            pattern: Regex pattern for parsing version from filename.
-                     If None, uses Namingconvention parameter value.
-                     Empty string means no versioning.
-        """
-        if pattern is None:
-            pattern = self._installer.par.Namingconvention.eval()
+    def onParCreatecallbacks(self):
+        template = self.ownerComp.op('callback_template')
+        callbacks_dat = self.CreateCallbackDat(self.ownerComp, template)
+        if callbacks_dat and hasattr(self.ownerComp.par, 'Callbackdat'):
+            self.ownerComp.par.Callbackdat = callbacks_dat
 
-        self.Properties['naming_convention'] = pattern
+    # endregion
 
-        # Refresh folder cache with new naming convention
-        if self.operators_folder:
-            self.fam_registry.FileManager.refresh_cache(self.Properties['family_name'], self.operators_folder)
+    # region Helpers
 
-    # --- Stub for single operator ---
+    def _update_with_ui(self, operators):
+        analysis = self._analyze_for_update(operators)
 
-    def Createstubop(self, target=None):
-        """
-        Create stub for a target operator.
+        if analysis['without_matches']:
+            choice = ui.messageBox('Missing Matches',
+                f"{len(analysis['without_matches'])} operators can't be matched. Skip them?",
+                buttons=['Continue', 'Cancel'])
+            if choice != 0:
+                return
 
-        Args:
-            target: Operator or path. If None, uses Targetop parameter.
+        updateable = len(analysis['updateable'])
+        choice = ui.messageBox('Update',
+            f'Update {updateable} operator(s)?',
+            buttons=['Update', 'Cancel'])
+        if choice != 0:
+            return
 
-        Returns:
-            Created stub COMP or None
-        """
-        if target is None:
-            target = self._installer.par.Targetop.eval()
-        if not target:
-            print("Createstubforop: No target operator specified")
-            return None
-        if isinstance(target, str):
-            target = op(target)
-        if isinstance(target, str):
-            target = op(target)
-        return super().CreateStubFor(target)
+        results = self._update_batch(analysis['updateable'])
 
-    def Replacestubop(self, stub=None):
-        """
-        Replace a stub with the full operator.
+        summary = f"Updated: {len(results['updated'])}\n"
+        summary += f"Skipped: {len(results['skipped'])}\n"
+        summary += f"Errors: {len(results['errors'])}"
+        ui.messageBox('Done', summary, buttons=['OK'])
 
-        Args:
-            stub: Stub COMP or path. If None, uses Targetop parameter.
-
-        Returns:
-            Replaced COMP or None
-        """
-        if stub is None:
-            stub = self._installer.par.Targetop.eval()
-        if not stub:
-            print("Replacestubforop: No stub specified")
-            return None
-        if isinstance(stub, str):
-            stub = op(stub)
-        if isinstance(stub, str):
-            stub = op(stub)
-        return super().ReplaceStubFor(stub)
-
-    def Updateop(self, target=None):
-        """
-        Update a single operator to latest version.
-
-        Args:
-            target: Operator or path. If None, uses Targetop parameter.
-
-        Returns:
-            Updated COMP or None
-        """
-        if target is None:
-            target = self._installer.par.Targetop.eval()
-        if not target:
-            print("Updateop: No target operator specified")
-            return None
-        if isinstance(target, str):
-            target = op(target)
-        if isinstance(target, str):
-            target = op(target)
-        return super().Updateop(target)
-
-    # --- Stubs for comp/network ---
-
-    def Createstubscomp(self, comp=None):
-        """
-        Create stubs for all family operators in a comp.
-
-        Args:
-            comp: Target COMP or path. If None, uses Targetcomp parameter.
-
-        Returns:
-            List of created stubs
-        """
-        if comp is None:
-            comp = self._installer.par.Targetcomp.eval()
-        if not comp:
-            print("Createstubsincomp: No comp specified")
-            return []
-        if isinstance(comp, str):
-            comp = op(comp)
-        if isinstance(comp, str):
-            comp = op(comp)
-
-        if isinstance(comp, str):
-            comp = op(comp)
-
-        # Use refined base method with scope
-        return super().CreateStubs(comp)
-
-    def Replacestubcomp(self, comp=None):
-        """
-        Replace all stubs in a comp with full operators.
-
-        Args:
-            comp: Target COMP or path. If None, uses Targetcomp parameter.
-
-        Returns:
-            List of replaced COMPs
-        """
-        if comp is None:
-            comp = self._installer.par.Targetcomp.eval()
-        if not comp:
-            print("Replacestubsincomp: No comp specified")
-            return []
-        if isinstance(comp, str):
-            comp = op(comp)
-        if isinstance(comp, str):
-            comp = op(comp)
-            
-        if isinstance(comp, str):
-            comp = op(comp)
-            
-        # Use refined base method with scope
-        return super().ReplaceStubs(comp)
-
-    def Updatecomp(self, comp=None):
-        """
-        Update all family operators in a comp.
-
-        Args:
-            comp: Target COMP or path. If None, uses Targetcomp parameter.
-
-        Returns:
-            List of updated COMPs
-        """
-        if comp is None:
-            comp = self._installer.par.Targetcomp.eval()
-        if not comp:
-            print("Updateopsincomp: No comp specified")
-            return []
-        if isinstance(comp, str):
-            comp = op(comp)
-        if isinstance(comp, str):
-            comp = op(comp)
-
-        if isinstance(comp, str):
-            comp = op(comp)
-
-        # Use refined base method with scope
-        return super().UpdateOperators(comp)
-
-    # --- Stubs for ALL ---
-
-    def Createstuball(self):
-        """
-        Create stubs for ALL family operators in the project.
-
-        Returns:
-            List of created stubs
-        """
-        return super().CreateStubs()
-
-    def Replacestuball(self):
-        """
-        Replace ALL stubs in the project with full operators.
-
-        Returns:
-            List of replaced COMPs
-        """
-        return super().ReplaceStubs()
-
-    def Updateall(self):
-        """
-        Update ALL family operators in the project.
-
-        Returns:
-            List of updated COMPs
-        """
-        return super().Updateall()
-
-    def Tagoperators(self, pattern=None):
-        """
-        Tag all operators in Opcomp with family and type tags.
-        Exposed as pulse parameter.
-
-        Args:
-            pattern: Tag pattern ('suffix' or 'name'). If None, uses 'suffix'.
-        """
-        if pattern is None:
-            pattern = 'suffix'
-        return super().TagOperators(pattern)
-
-    def Createcallbacks(self):
-        """
-        Create a callbacks DAT from template if not already set.
-        Sets the Callbackdat parameter to the created DAT.
-
-        Returns:
-            The created callbacks DAT, or None if already exists
-        """
-        template = self._installer.op('callback_template')
-        callbacks_dat = self.CreateCallbackDat(self._installer, template)
-
-        if callbacks_dat:
-            self._installer.par.Callbackdat = callbacks_dat
-
-        return callbacks_dat
+    # endregion
