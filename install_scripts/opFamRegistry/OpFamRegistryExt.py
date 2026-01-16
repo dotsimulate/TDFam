@@ -4,6 +4,7 @@ from GlobalUIInjector import GlobalUIInjector
 from TagManager import TagManager
 from StubManager import StubManager
 from UpdateManager import UpdateManager
+from FileManager import FileManager
 
 class OpFamRegistryExt:
 	def __init__(self, ownerComp):
@@ -14,9 +15,10 @@ class OpFamRegistryExt:
 		self.global_ui_injector = GlobalUIInjector(self.ownerComp, self)
 		
 		# Initialize Helper Systems
-		self.TagManager = TagManager(self.ownerComp)
+		self.TagManager = TagManager(self.ownerComp, self)
 		self.StubManager = StubManager(self.ownerComp, self)
 		self.UpdateManager = UpdateManager(self.ownerComp, self)
+		self.FileManager = FileManager(self.ownerComp, self)
 #
 	def RegisterFamily(self, family_owner : OpFamCreateExt):
 		fam_name = family_owner.Properties['family_name']
@@ -60,8 +62,34 @@ class OpFamRegistryExt:
 		return False
 
 	def IsFamilyInstalled(self, fam_name):
+		"""Public API to check if a family is installed."""
+		return fam_name in self.InstalledFams
+
+	def IsFamilyUIInstalled(self, fam_name):
 		"""Public API to check if a family's UI is installed."""
 		return self.global_ui_injector.is_family_installed(fam_name)
+
+	def GetFamilyOwner(self, fam_name):
+		"""
+		Get family owner by name.
+		Checks installed families first, then registered.
+		"""
+		if fam_name in self.InstalledFams:
+			return self.InstalledFams[fam_name]
+		if fam_name in self.RegisteredFams:
+			return self.RegisteredFams[fam_name]
+		else:
+			raise ValueError(f'Family {fam_name} not found in Registry')
+
+	def GetFamilyExt(self, fam_name):
+		"""
+		Get family owner (OpFamExt) by name.
+		Checks installed families first, then registered.
+		"""
+		family_owner = self.GetFamilyOwner(fam_name)
+		if family_owner and hasattr(family_owner, 'ext') and hasattr(family_owner.ext, 'OpFamExt'):
+			return family_owner.ext.OpFamExt
+		return None
 
 	def UpdateFamilyName(self, old_name, new_name):
 		# send event if indeed renamed

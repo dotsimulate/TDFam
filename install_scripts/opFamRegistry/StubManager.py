@@ -35,8 +35,13 @@ class StubManager:
 			return hook(*args)
 		return None
 
-	def get_family_name(self, installer):
-		return installer.Properties['family_name']
+
+	def _call_hook(self, installer, hook_name, *args):
+		"""Call a hook on the installer if it exists."""
+		hook = getattr(installer, hook_name, None)
+		if hook and callable(hook):
+			return hook(*args)
+		return None
 
 	def _get_first_element(self, s):
 		"""Returns the first element of a set/list or None if empty."""
@@ -44,26 +49,30 @@ class StubManager:
 			return e
 		return None
 
-	def create_stub(self, installer, comp):
+	def create_stub(self, family_name, comp):
 		"""
 		Create a lightweight stub of a component.
 
 		Preserves connections, parameters, position, and type info.
 
 		Args:
-			installer: The OpFamCreateExt instance
+			family_name: The family name
 			comp: The component to create a stub from
 
 		Returns:
 			The stub component, or None if skipped
 		"""
+		installer = self.registry.GetFamilyExt(family_name)
+		if not installer:
+			print(f"createStub: Family {family_name} not found")
+			return None
+
 		# Hook: PreStub - can return False to skip
 		if self._call_hook(installer, '_PreStub', comp) is False:
 			print(f"createStub: Skipped {comp.path} by PreStub hook")
 			return None
 
 		name = comp.name
-		family_name = self.get_family_name(installer)
 		category_tags = self._call_hook(installer, '_GetCategoryTags') or set()
 		op_type = self.registry.TagManager.get_operator_type(comp, family_name, category_tags)
 
@@ -121,8 +130,7 @@ class StubManager:
 		# Store parameters
 		# Store parameters
 		params, sequences = self._capture_params(comp)
-		# debug(params)
-		# debug(sequences)
+		
 		comp.store('params', params)
 		comp.store('sequences', sequences)
 
@@ -184,7 +192,6 @@ class StubManager:
 				match = re.match(r'(.+?)(\d+)(.+)', p.name)
 				if match:
 					_, _, par_basename = match.groups()
-					debug(par_basename)
 					if p.isCustom:
 						par_basename = par_basename.capitalize()
 					if par_basename not in discovered_sequences[p.sequence.name]:
@@ -195,7 +202,7 @@ class StubManager:
 				params[p.name] = self._get_par_info(p)
 
 		all_sequence_data = {}
-		debug(discovered_sequences)
+		
 		for _sequence, par_names in discovered_sequences.items():
 			all_sequence_data[_sequence] = {}
 			for _block_idx, _block in enumerate(comp.seq[_sequence]):
@@ -245,18 +252,22 @@ class StubManager:
 			dest_par.mode = ParMode.CONSTANT
 			dest_par.val = value
 
-	def replace_stub(self, installer, stub):
+	def replace_stub(self, family_name, stub):
 		"""
 		Replace a single stub with a full operator.
 
 		Args:
-			installer: The installer component
+			family_name: The family name
 			stub: The stub component
 
 		Returns:
 			The new full component, or None if failed
 		"""
-		family_name = self.get_family_name(installer)
+		installer = self.registry.GetFamilyExt(family_name)
+		if not installer:
+			print(f"replaceStub: Family {family_name} not found")
+			return None
+
 		if not family_name in stub.tags:
 			print(f"replaceStub: Invalid stub tag on {stub.path}")
 			return None
@@ -278,14 +289,16 @@ class StubManager:
 				return None
 
 		# Find master
+		# Find master
 		target_parent = stub.parent()
-		master_op, is_file_based = installer.file_loader.get_master_for_type(
-			op_type, target_parent,
+		source_type, source = self.registry.FileManager.get_operator_source(
+			family_name,
+			op_type,
 			getattr(installer, 'operators_folder', None),
 			getattr(installer, 'dynamic_refresh', False)
-		)
+		) or (None, None)
 
-		if not master_op:
+		if not source:
 			print(f"replaceStub: No master found for type '{op_type}'")
 			return None
 
@@ -294,14 +307,18 @@ class StubManager:
 			stub.name = stub.name + '_stub'
 
 		# Create new component
-		if is_file_based:
-			new_comp = master_op
-		else:
-			new_comp = target_parent.copy(master_op)
+		new_comp = None
+		if source_type == 'embedded':
+			new_comp = target_parent.copy(source)
+		elif source_type == 'file':
+			try:
+				new_comp = target_parent.loadTox(source)
+			except Exception as e:
+				print(f"replaceStub: Error loading tox {source}: {e}")
+				return None
+
 		if not new_comp:
 			raise Exception(f"replaceStub: Failed to create new component for {stub.path}")
-
-		
 
 		# Merge tags with new_comp and restored tags
 		new_comp.tags = list(set(new_comp.tags) | set(stub.fetch('tags', [])))
@@ -407,19 +424,22 @@ class StubManager:
 
 	# ==================== Batch Operations ====================
 
-	def find_family_operators(self, installer, network=None, max_depth=None):
+	def find_family_operators(self, family_name, network=None, max_depth=None):
 		"""
 		Find all operators of this family.
 
 		Args:
-			installer: The installer component
+			family_name: The family name
 			network: Optional network to search in. Defaults to root.
 			max_depth: Maximum search depth. None for unlimited.
 
 		Returns:
 			list: Family operators (excluding installer and stubs)
 		"""
-		family_name = self.get_family_name(installer)
+		installer = self.registry.GetFamilyExt(family_name)
+		if not installer:
+			return []
+
 		excluded_tags = self._call_hook(installer, '_GetExcludedTags') or set()
 
 		search_root = network or op('/')
@@ -439,18 +459,21 @@ class StubManager:
 			)
 		)
 
-	def find_stubs(self, installer, network=None):
+	def find_stubs(self, family_name, network=None):
 		"""
 		Find all stubs of this family.
 
 		Args:
-			installer: The installer component
+			family_name: The family name
 			network: Optional network to search in. Defaults to root.
 
 		Returns:
 			list: Stub operators
 		"""
-		family_name = self.get_family_name(installer)
+		installer = self.registry.GetFamilyExt(family_name)
+		if not installer:
+			return []
+
 		excluded_tags = self._call_hook(installer, '_GetExcludedTags') or set()
 		excluded_lower = {t.lower() for t in excluded_tags}
 
@@ -469,24 +492,23 @@ class StubManager:
 		# Filter by op_type
 		return [s for s in all_stubs if s.fetch('op_type', '').lower() not in excluded_lower]
 
-	def create_stubs_batch(self, installer, operators):
+	def create_stubs_batch(self, family_name, operators):
 		"""
 		Create stubs for multiple operators.
 
 		Args:
-			installer: The installer component
+			family_name: The family name
 			operators: List of operators to stub
 
 		Returns:
 			list: Created stubs
 		"""
-		family_name = self.get_family_name(installer)
 		ui.undo.startBlock(f'Create {family_name} Stubs')
 
 		stubs = []
 		for comp in operators:
 			try:
-				stub = self.create_stub(installer, comp)
+				stub = self.create_stub(family_name, comp)
 				if stub:
 					stubs.append(stub)
 			except Exception as e:
@@ -497,28 +519,27 @@ class StubManager:
 
 		return stubs
 
-	def replace_stubs_batch(self, installer, stubs):
+	def replace_stubs_batch(self, family_name, stubs):
 		"""
 		Replace multiple stubs with full operators.
 
 		Args:
-			installer: The installer component
+			family_name: The family name
 			stubs: List of stubs to replace
 
 		Returns:
 			list: Regenerated operators
 		"""
-		family_name = self.get_family_name(installer)
 		ui.undo.startBlock(f'Replace {family_name} Stubs')
 
 		regenerated = []
 		for stub in stubs:
-			try:
-				new_comp = self.replace_stub(installer, stub)
-				if new_comp:
-					regenerated.append(new_comp)
-			except Exception as e:
-				print(f"Error replacing stub {stub.path}: {e}")
+			# try:
+			new_comp = self.replace_stub(family_name, stub)
+			if new_comp:
+				regenerated.append(new_comp)
+			# except Exception as e:
+			# 	print(f"Error replacing stub {stub.path}: {e}")
 
 		ui.undo.endBlock()
 

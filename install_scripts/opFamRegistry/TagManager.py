@@ -6,23 +6,27 @@ for the stub/update/placement systems to work correctly.
 """
 
 class TagManager:
-	def __init__(self, ownerComp):
+	def __init__(self, ownerComp, registry):
 		self.ownerComp = ownerComp
+		self.registry = registry
 
-	def ensure_family_tags(self, installer, custom_ops_base=None):
+	def ensure_family_tags(self, family_name, custom_ops_base=None):
 		"""
 		Ensure all operators in operators_comp have the family tag.
 
 		Args:
-			installer: The OpFamCreateExt instance
+			family_name: The family name
 			custom_ops_base: Optional custom operators base.
-							 Defaults to installer.operators_comp
 		"""
+		installer = self.registry.GetFamilyExt(family_name)
+		if not installer:
+			return
+
 		custom_ops = custom_ops_base or installer.Properties['operators_comp']
 		if not custom_ops:
 			return
 
-		family = installer.Properties['family_name']
+		family = family_name
 		for comp in custom_ops.findChildren(type=COMP, maxDepth=1):
 			if family not in comp.tags:
 				comp.tags.add(family)
@@ -30,22 +34,24 @@ class TagManager:
 				comp.tags.add('<FAM>')
 
 
-	def ensure_type_tags(self, installer, custom_ops_base=None, pattern='suffix'):
+	def ensure_type_tags(self, family_name, custom_ops_base=None, pattern='suffix'):
 		"""
 		Ensure all operators have type tags for stub/update matching.
 
 		Args:
-			installer: The OpFamCreateExt instance
+			family_name: The family name
 			custom_ops_base: Optional custom operators base
-			pattern: Tag pattern to use:
-					 'suffix' - {opname}{Family} (e.g., agentLOP)
-					 'name' - just operator name as tag - simpler style
+			pattern: Tag pattern ('suffix' or 'name')
 		"""
+		installer = self.registry.GetFamilyExt(family_name)
+		if not installer:
+			return
+
 		custom_ops = custom_ops_base or installer.Properties['operators_comp']
 		if not custom_ops:
 			return
 
-		family = installer.Properties['family_name']
+		family = family_name
 		for comp in custom_ops.findChildren(type=COMP, maxDepth=1):
 			if pattern == 'suffix':
 				type_tag = f"{comp.name}{family}"
@@ -56,18 +62,16 @@ class TagManager:
 				comp.tags.add(type_tag)
 
 
-	def tag_operators(self, installer, pattern='suffix'):
+	def tag_operators(self, family_name, pattern='suffix'):
 		"""
 		Convenience method to ensure both family and type tags on all operators.
 
-		Call this in wrapper's __init__() or Install() to auto-tag operators.
-
 		Args:
-			installer: The OpFamCreateExt instance
-			pattern: Tag pattern for type tags ('suffix' or 'name')
+			family_name: The family name
+			pattern: Tag pattern ('suffix' or 'name')
 		"""
-		self.ensure_family_tags(installer)
-		self.ensure_type_tags(installer, pattern=pattern)
+		self.ensure_family_tags(family_name)
+		self.ensure_type_tags(family_name, pattern=pattern)
 
 
 	def get_operator_type(self, comp, family_name, category_tags=None):

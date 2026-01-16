@@ -79,8 +79,8 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
             self._sync_parameters()
 
             # Build folder cache now that operators_folder is set from parameters
-            if self.operators_folder and not self.dynamic_refresh:
-                self.file_loader.refresh_cache(self.operators_folder)
+            if self.operators_folder and not self.dynamic_refresh and self.fam_registry:
+                self.fam_registry.FileManager.refresh_cache(self.Properties['family_name'], self.operators_folder)
 
         run(lambda: self.postInit(), delayFrames = 2)
 
@@ -328,7 +328,7 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
 
         # Refresh folder cache with new naming convention
         if self.operators_folder:
-            self.file_loader.refresh_cache(self.operators_folder)
+            self.fam_registry.FileManager.refresh_cache(self.Properties['family_name'], self.operators_folder)
 
     # --- Stub for single operator ---
 
@@ -342,7 +342,6 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         Returns:
             Created stub COMP or None
         """
-        debug(f'Createstubforop: target: {target}')
         if target is None:
             target = self._installer.par.Targetop.eval()
         if not target:
@@ -394,7 +393,7 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
             target = op(target)
         if isinstance(target, str):
             target = op(target)
-        return super().UpdateOp(target)
+        return super().Updateop(target)
 
     # --- Stubs for comp/network ---
 
@@ -424,7 +423,7 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         # Use refined base method with scope
         return super().CreateStubs(comp)
 
-    def Replacestubscomp(self, comp=None):
+    def Replacestubcomp(self, comp=None):
         """
         Replace all stubs in a comp with full operators.
 
@@ -450,7 +449,7 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         # Use refined base method with scope
         return super().ReplaceStubs(comp)
 
-    def Updateopcomp(self, comp=None):
+    def Updatecomp(self, comp=None):
         """
         Update all family operators in a comp.
 

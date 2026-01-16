@@ -31,10 +31,8 @@ class UpdateManager:
 			return hook(*args)
 		return None
 
-	def get_family_name(self, installer):
-		return installer.Properties['family_name']
 
-	def find_matching_master(self, installer, comp):
+	def find_matching_master(self, family_name, comp):
 		"""
 		Find a matching master operator for a component.
 
@@ -43,36 +41,44 @@ class UpdateManager:
 		2. ext0object parameter
 
 		Args:
-			installer: The installer component
+			family_name: The family name
 			comp: The component to find a match for
 
 		Returns:
-			tuple: (master_op, match_method) or (None, 'none')
+			tuple: (source_type, source, match_method) or (None, None, 'none')
 		"""
-		operators_folder = installer.operators_comp
-		if not operators_folder:
-			return (None, 'none')
+		installer = self.registry.GetFamilyExt(family_name)
+		if not installer:
+			return (None, None, 'none')
 
 		category_tags = self._call_hook(installer, '_GetCategoryTags') or set()
-		family_name = self.get_family_name(installer)
-
+		
 		# Try matching by type tag
 		if self.registry.TagManager.has_operator_type_tag(comp, family_name, category_tags):
 			comp_type = self.registry.TagManager.get_operator_type(comp, family_name, category_tags)
-			master_ops = operators_folder.findChildren(name=comp_type, maxDepth=1)
-			if master_ops:
-				return (master_ops[0], 'type_tag')
+			source_type, source = self.registry.FileManager.get_operator_source(
+				family_name,
+				comp_type,
+				getattr(installer, 'operators_folder', None),
+				getattr(installer, 'dynamic_refresh', False)
+			) or (None, None)
+			
+			if source:
+				return (source_type, source, 'type_tag')
+
 
 		# Try matching by ext0object
-		if hasattr(comp.par, 'ext0object'):
+		# This is legacy/specific, assumes embedded master currently
+		operators_folder = installer.operators_comp
+		if operators_folder and hasattr(comp.par, 'ext0object'):
 			ext_obj = comp.par.ext0object.eval()
 			if ext_obj:
 				for master_op in operators_folder.findChildren(type=COMP, maxDepth=1):
 					if hasattr(master_op.par, 'ext0object'):
 						if master_op.par.ext0object.eval() == ext_obj:
-							return (master_op, 'ext0object')
+							return ('embedded', master_op, 'ext0object')
 
-		return (None, 'none')
+		return (None, None, 'none')
 
 	def _copy_par(self, dest_par, source_par):
 		"""Copy parameter value/mode from source to destination."""
@@ -84,31 +90,57 @@ class UpdateManager:
 		elif source_par.mode == ParMode.BIND:
 			dest_par.bindExpr = source_par.bindExpr
 
-	def update_operator(self, installer, old_comp):
+	def update_operator(self, family_name, old_comp):
 		"""
 		Update a single operator to the newest version.
 
 		Args:
-			installer: The installer component
+			family_name: The family name
 			old_comp: The component to update
 
 		Returns:
 			tuple: (success, message)
 		"""
-		operators_folder = installer.operators_comp
-		if not operators_folder:
-			return (False, "Error: operators_comp not set")
+		installer = self.registry.GetFamilyExt(family_name)
+		if not installer:
+			return (False, f"Family {family_name} not found")
 
-		master_comp, match_method = self.find_matching_master(installer, old_comp)
-		if not master_comp:
+		source_type, source, match_method = self.find_matching_master(family_name, old_comp)
+		if not source:
 			return (False, f"Couldn't update {old_comp.path}, no matching master found")
 
-		# Hook: PreUpdate
-		if self._call_hook(installer, '_PreUpdate', old_comp, master_comp) is False:
-			return (False, f"Update cancelled by PreUpdate hook for {old_comp.path}")
+		# Prepare master_op for hook and update
+		master_op = None
+		is_file_loaded = False
 
 		try:
-			new_comp = old_comp.parent().copy(master_comp)
+			if source_type == 'embedded':
+				master_op = source
+			elif source_type == 'file':
+				try:
+					master_op = old_comp.parent().loadTox(source)
+					is_file_loaded = True
+				except Exception as e:
+					return (False, f"Error loading tox {source}: {e}")
+
+			# Hook: PreUpdate
+			if self._call_hook(installer, '_PreUpdate', old_comp, master_op) is False:
+				if is_file_loaded and master_op:
+					master_op.destroy()
+				return (False, f"Update cancelled by PreUpdate hook for {old_comp.path}")
+
+			# Create new_comp (or use loaded)
+			new_comp = None
+			if is_file_loaded:
+				new_comp = master_op
+			else:
+				new_comp = old_comp.parent().copy(master_op)
+			
+			if not new_comp:
+				if is_file_loaded and master_op:
+					master_op.destroy()
+				return (False, "Failed to create new component")
+
 			old_name = old_comp.name
 
 			# Preserve attributes
@@ -181,18 +213,21 @@ class UpdateManager:
 		except Exception as e:
 			return (False, f"Error updating {old_comp.path}: {e}")
 
-	def find_family_operators(self, installer, network=None):
+	def find_family_operators(self, family_name, network=None):
 		"""
 		Find all operators of this family.
 
 		Args:
-			installer: The installer component
+			family_name: The family name
 			network: Optional network to search in
 
 		Returns:
 			list: Family operators (excluding installer)
 		"""
-		family_name = self.get_family_name(installer)
+		installer = self.registry.GetFamilyExt(family_name)
+		if not installer:
+			return []
+
 		excluded_tags = self._call_hook(installer, '_GetExcludedTags') or set()
 
 		search_root = network or op('/')
@@ -210,20 +245,23 @@ class UpdateManager:
 			)
 		)
 
-	def analyze_operators(self, installer, operators):
+	def analyze_operators(self, family_name, operators):
 		"""
 		Analyze operators for update compatibility.
 
 		Args:
-			installer: The installer component
+			family_name: The family name
 			operators: List of operators to analyze
 
 		Returns:
 			dict: Analysis results
 		"""
+		installer = self.registry.GetFamilyExt(family_name)
+		if not installer:
+			return {'without_matches': [], 'updateable': [], 'with_type_tags': [], 'with_ext_object': []}
+
 		operators_folder = installer.operators_comp
 		category_tags = self._call_hook(installer, '_GetCategoryTags') or set()
-		family_name = self.get_family_name(installer)
 
 		results = {
 			'with_type_tags': [],
@@ -240,26 +278,25 @@ class UpdateManager:
 				results['with_ext_object'].append(comp)
 				results['updateable'].append(comp)
 			else:
-				master, _ = self.find_matching_master(installer, comp)
-				if master:
+				source_type, _, _ = self.find_matching_master(family_name, comp)
+				if source_type:
 					results['updateable'].append(comp)
 				else:
 					results['without_matches'].append(comp)
 
 		return results
 
-	def update_batch(self, installer, operators):
+	def update_batch(self, family_name, operators):
 		"""
 		Update multiple operators.
 
 		Args:
-			installer: The installer component
+			family_name: The family name
 			operators: List of operators to update
 
 		Returns:
 			dict: Results with updated, skipped, errors lists
 		"""
-		family_name = self.get_family_name(installer)
 		ui.undo.startBlock(f'Update {family_name} operators')
 
 		results = {
@@ -270,7 +307,7 @@ class UpdateManager:
 
 		for op_comp in operators:
 			try:
-				success, message = self.update_operator(installer, op_comp)
+				success, message = self.update_operator(family_name, op_comp)
 				if success:
 					results['updated'].append(message)
 				else:

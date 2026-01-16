@@ -21,7 +21,7 @@ from __future__ import annotations
 import time
 from TDStoreTools import DependDict
 
-FileLoader = mod('src/file_loader').FileLoader
+
 ConfigManager = mod('src/config_system').ConfigManager
 
 
@@ -96,7 +96,7 @@ class OpFamCreateExt:
         self.expose = expose
 
         # Initialize subsystems (they read from Properties)
-        self.file_loader = FileLoader(self)
+        # self.file_loader = FileLoader(self) # REMOVED: Moved to Registry
         self.config = ConfigManager(self)
 
         # Ensure config tables exist with proper headers
@@ -105,9 +105,9 @@ class OpFamCreateExt:
         # Sync DAT tables to Config DependDict (populates Config from existing tables)
         self.config.sync_tables_to_config()
 
-        # Build initial cache if folder set
-        if self.operators_folder and not self.dynamic_refresh:
-            self.file_loader.refresh_cache(self.operators_folder)
+        # Build initial cache if folder set - MOVED TO POST INIT
+        # if self.operators_folder and not self.dynamic_refresh:
+        #     self.file_loader.refresh_cache(self.operators_folder)
 
         # Debouncing for recursive installation prevention
         self.last_install_time = 0
@@ -127,6 +127,10 @@ class OpFamCreateExt:
 
         if self.fam_registry:
             self.fam_registry.RegisterFamily(self.ownerComp)
+            
+            # Initial cache build now happens here, after registry is available
+            if self.operators_folder and not self.dynamic_refresh:
+                self.fam_registry.FileManager.refresh_cache(self.FamilyName.val, self.operators_folder)
 
         # Check for existing installers and set up
         self._initialize_installer()
@@ -284,7 +288,7 @@ class OpFamCreateExt:
         self.last_install_time = time.time()
 
         if self.operators_folder:
-            self.file_loader.refresh_cache(self.operators_folder)
+            self.fam_registry.FileManager.refresh_cache(self.FamilyName.val, self.operators_folder)
         self.fam_registry.InstallFamily(self.ownerComp)
         self._call_hook('_PostInstall')
 
@@ -304,7 +308,7 @@ class OpFamCreateExt:
                      'suffix' - {opname}{Family} (e.g., agentLOP)
                      'name' - just operator name as tag
         """
-        self.fam_registry.TagManager.tag_operators(self, pattern)
+        self.fam_registry.TagManager.tag_operators(self.FamilyName.val, pattern)
 
     def selfDestroy(self):
         """Destroy the installer component."""
@@ -323,7 +327,8 @@ class OpFamCreateExt:
         Returns:
             tuple: ('embedded', op) or ('file', path) or None
         """
-        return self.file_loader.get_operator_source(
+        return self.fam_registry.FileManager.get_operator_source(
+            self.FamilyName.val,
             lookup_name,
             self.operators_folder,
             self.dynamic_refresh
@@ -331,7 +336,7 @@ class OpFamCreateExt:
 
     def Refreshfolder(self):
         """Rescan external operators folder."""
-        self.file_loader.refresh_cache(self.operators_folder)
+        self.fam_registry.FileManager.refresh_cache(self.FamilyName.val, self.operators_folder)
 
         op_fam = self.ownerComp.op('OP_fam')
         if op_fam:
@@ -437,23 +442,21 @@ class OpFamCreateExt:
         Args:
             comp: Optional COMP to restrict search scope.
         """
-        operators = self.fam_registry.StubManager.find_family_operators(self, comp)
+        operators = self.fam_registry.StubManager.find_family_operators(self.FamilyName.val, comp)
 
         if not operators:
-            scope = f"in {comp.path}" if comp else "in project"
             ui.messageBox(
                 f"No {self.FamilyName.val} Operators Found",
-                f"No {self.FamilyName.val} operators found {scope} to create stubs.",
+                f"No {self.FamilyName.val} operators found to create stubs.",
                 buttons=["OK"]
             )
             return
 
         # Check for missing type tags
-        has_operator_type_tag = self.fam_registry.TagManager.has_operator_type_tag
         category_tags = self._call_hook('_GetCategoryTags') or set()
         ops_without_tags = [
             c for c in operators
-            if not has_operator_type_tag(c, self.FamilyName.val, category_tags)
+            if not self.fam_registry.TagManager.has_operator_type_tag(c, self.FamilyName.val, category_tags)
         ]
 
         if ops_without_tags:
@@ -469,7 +472,7 @@ class OpFamCreateExt:
             return
 
 
-        stubs = self.fam_registry.StubManager.create_stubs_batch(self, operators)
+        stubs = self.fam_registry.StubManager.create_stubs_batch(self.FamilyName.val, operators)
         ui.messageBox('Stubs Created', f"Created {len(stubs)} stub(s).", buttons=["OK"])
 
     def ReplaceStubs(self, comp=None):
@@ -479,13 +482,12 @@ class OpFamCreateExt:
         Args:
             comp: Optional COMP to restrict search scope.
         """
-        stubs = self.fam_registry.StubManager.find_stubs(self, comp)
+        stubs = self.fam_registry.StubManager.find_stubs(self.FamilyName.val, comp)
 
         if not stubs:
-            scope = f"in {comp.path}" if comp else "in project"
             ui.messageBox(
                 f"No {self.FamilyName.val} Stubs Found",
-                f"No {self.FamilyName.val} stubs found {scope}.",
+                f"No {self.FamilyName.val} stubs found.",
                 buttons=["OK"]
             )
             return
@@ -495,7 +497,7 @@ class OpFamCreateExt:
         if choice != 0:
             return
 
-        regenerated = self.fam_registry.StubManager.replace_stubs_batch(self, stubs)
+        regenerated = self.fam_registry.StubManager.replace_stubs_batch(self.FamilyName.val, stubs)
         ui.messageBox('Regeneration Complete', f"Regenerated {len(regenerated)} operator(s).", buttons=["OK"])
 
     def CreateStubFor(self, operator_path):
@@ -511,7 +513,7 @@ class OpFamCreateExt:
             return None
 
         ui.undo.startBlock(f'Create Stub for {comp.name}')
-        stub = self.fam_registry.StubManager.create_stub(self, comp)
+        stub = self.fam_registry.StubManager.create_stub(self.FamilyName.val, comp)
         ui.undo.endBlock()
 
         return stub
@@ -523,26 +525,12 @@ class OpFamCreateExt:
             return None
 
         ui.undo.startBlock(f'Replace Stub {stub.name}')
-        new_comp = self.fam_registry.StubManager.replace_stub(self, stub)
+        new_comp = self.fam_registry.StubManager.replace_stub(self.FamilyName.val, stub)
         ui.undo.endBlock()
 
         return new_comp
 
     # ==================== Update API ====================
-
-    def UpdateOp(self, target):
-        """
-        Update a single operator to latest version.
-        
-        Args:
-            target: Operator or path.
-        """
-        if isinstance(target, str):
-            target = op(target)
-        if not target:
-            return None
-            
-        return self.fam_registry.UpdateManager.update_operator(self, target)
 
     def UpdateOperators(self, comp=None):
         """
@@ -551,14 +539,13 @@ class OpFamCreateExt:
         Args:
             comp: Optional COMP to restrict search scope.
         """
-        operators = self.fam_registry.UpdateManager.find_family_operators(self, comp)
+        operators = self.fam_registry.UpdateManager.find_family_operators(self.FamilyName.val, comp)
 
         if not operators:
-            scope = f"in {comp.path}" if comp else "in project"
-            ui.messageBox("No Operators Found", f"No {self.FamilyName.val} operators found {scope}.", buttons=["OK"])
+            ui.messageBox("No Operators Found", f"No {self.FamilyName.val} operators found.", buttons=["OK"])
             return
 
-        analysis = self.fam_registry.UpdateManager.analyze_operators(self, operators)
+        analysis = self.fam_registry.UpdateManager.analyze_operators(self.FamilyName.val, operators)
 
         if analysis['without_matches']:
             warning = f"{len(analysis['without_matches'])} operators cannot be matched.\n"
@@ -573,17 +560,50 @@ class OpFamCreateExt:
         if choice != 0:
             return
 
-        results = self.fam_registry.UpdateManager.update_batch(self, analysis['updateable'])
+        results = self.fam_registry.UpdateManager.update_batch(self.FamilyName.val, analysis['updateable'])
 
         summary = f"Updated: {len(results['updated'])}\n"
         summary += f"Skipped: {len(results['skipped'])}\n"
         summary += f"Errors: {len(results['errors'])}"
         ui.messageBox('Update Complete', summary, buttons=["OK"])
-        return results['updated']
 
-    def UpdateAll(self):
-        """Update all family operators (Backwards compatibility)."""
-        return self.UpdateOperators(None)
+    def Updateall(self):
+        """Update all family operators (with UI confirmation)."""
+        operators = self.fam_registry.UpdateManager.find_family_operators(self.FamilyName.val)
+
+        if not operators:
+            ui.messageBox("No Operators Found", f"No {self.FamilyName.val} operators found.", buttons=["OK"])
+            return
+
+        analysis = self.fam_registry.UpdateManager.analyze_operators(self.FamilyName.val, operators)
+
+        if analysis['without_matches']:
+            warning = f"{len(analysis['without_matches'])} operators cannot be matched.\n"
+            warning += "They will be skipped. Continue?"
+            choice = ui.messageBox('Missing Matches', warning, buttons=['Continue', 'Cancel'])
+            if choice != 0:
+                return
+
+        updateable = len(analysis['updateable'])
+        message = f"Update {updateable} operator(s)?"
+        choice = ui.messageBox(f'Update {self.FamilyName.val}', message, buttons=['Update', 'Cancel'])
+        if choice != 0:
+            return
+
+        results = self.fam_registry.UpdateManager.update_batch(self.FamilyName.val, analysis['updateable'])
+
+        summary = f"Updated: {len(results['updated'])}\n"
+        summary += f"Skipped: {len(results['skipped'])}\n"
+        summary += f"Errors: {len(results['errors'])}"
+        ui.messageBox('Update Complete', summary, buttons=["OK"])
+
+    def Updateop(self, op):
+        """Update a specific operator."""
+        if not op:
+            ui.messageBox("No Operator Selected", "No operator selected.", buttons=["OK"])
+            return
+
+        self.fam_registry.UpdateManager.update_operator(self.FamilyName.val, op)
 
     # ==================== Hooks ====================
 
