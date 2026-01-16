@@ -171,6 +171,12 @@ def onValueChange(panelValue, prev):
     clone = None
     is_file_based = False
 
+    try:
+        prep_place = op.FAMREGISTRY.opex('prep')
+    except:
+        debug("Error: 'prep' operator not found in FAMREGISTRY")
+        prep_place = installer.op('prep')
+
     if source_result is None:
         # Fallback to original embedded-only behavior
         custom_ops = installer.par.Opcomp.eval() if hasattr(installer.par, 'Opcomp') else None
@@ -182,7 +188,7 @@ def onValueChange(panelValue, prev):
             print(f"Error: Operator '{lookup_name}' not found in custom_operators")
             return
         master = masters[0]
-        clone = installer.copy(master, name=normalized_name+'1')
+        clone = prep_place.copy(master, name=normalized_name+'1')
 
     elif source_result[0] == 'file':
         # Load from external .tox file
@@ -206,13 +212,13 @@ def onValueChange(panelValue, prev):
             if custom_ops_base:
                 masters = custom_ops_base.findChildren(name=lookup_name, maxDepth=1)
                 if masters:
-                    clone = installer.copy(masters[0], name=normalized_name+'1')
+                    clone = prep_place.copy(masters[0], name=normalized_name+'1')
                     is_file_based = False
 
     elif source_result[0] == 'embedded':
         # Use embedded operator (normal path)
         master = source_result[1]
-        clone = installer.copy(master, name=normalized_name+'1')
+        clone = prep_place.copy(master, name=normalized_name+'1')
 
     if clone is None:
         print(f"Error: Could not create operator '{lookup_name}'")
