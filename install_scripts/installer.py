@@ -275,8 +275,8 @@ class OpFamCreateExt:
             sys_registry.par.opshortcut = 'FAMREGISTRY'
             for family in previous_registered_fams.values():
                 sys_registry.RegisterFamily(family)
-            for family in previous_installed_fams.values():
-                sys_registry.InstallFamily(family)
+            for fam_name in previous_installed_fams.keys():
+                sys_registry.InstallFamily(fam_name)
             
         return sys_registry
 
@@ -284,20 +284,18 @@ class OpFamCreateExt:
 
     def Install(self):
         """Install the operator family into TouchDesigner's UI."""
-        self._call_hook('_PreInstall')
         self.last_install_time = time.time()
 
         if self.operators_folder:
             self.fam_registry.FileManager.refresh_cache(self.FamilyName.val, self.operators_folder)
-        self.fam_registry.InstallFamily(self.ownerComp)
-        self._call_hook('_PostInstall')
+        
+        # Hooks (_PreInstall, _PostInstall) handled by registry
+        self.fam_registry.InstallFamily(self.FamilyName.val)
 
     def Uninstall(self):
         """Uninstall the operator family from TouchDesigner's UI."""
-        self._call_hook('_PreUninstall')
-        self.fam_registry.UninstallFamily(self.ownerComp)
-        # TODO: do we check return and only then call the post?
-        self._call_hook('_PostUninstall')
+        # Hooks (_PreUninstall, _PostUninstall) handled by registry
+        self.fam_registry.UninstallFamily(self.FamilyName.val)
 
     def TagOperators(self, pattern='suffix'):
         """
@@ -453,7 +451,7 @@ class OpFamCreateExt:
             return
 
         # Check for missing type tags
-        category_tags = self._call_hook('_GetCategoryTags') or set()
+        category_tags = self.fam_registry.CallHook(self.FamilyName.val, '_GetCategoryTags') or set()
         ops_without_tags = [
             c for c in operators
             if not self.fam_registry.TagManager.has_operator_type_tag(c, self.FamilyName.val, category_tags)

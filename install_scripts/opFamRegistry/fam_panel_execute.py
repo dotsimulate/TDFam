@@ -154,7 +154,7 @@ def onValueChange(panelValue, prev):
     #   False = cancel and close menu
     #   None  = cancel but keep menu open (ActionOp)
     #   'nohook' = no hook defined, proceed with placement
-    result = installer.CallHook('_PlaceOp', panelValue, lookup_name)
+    result = op.FAMREGISTRY.CallHook(_get_family(), '_PlaceOp', panelValue, lookup_name)
     if result is False:
         parent.OPCREATE.par.winclose.pulse()
         return
@@ -172,10 +172,12 @@ def onValueChange(panelValue, prev):
     is_file_based = False
 
     try:
-        prep_place = op.FAMREGISTRY.opex('prep')
+        prep_place = op.FAMREGISTRY.op('prep')
     except:
         debug("Error: 'prep' operator not found in FAMREGISTRY")
-        prep_place = installer.op('prep')
+        prep_place = None
+    if prep_place is None:
+        prep_place = installer.op('OpFamRegistry/prep')
 
     if source_result is None:
         # Fallback to original embedded-only behavior
@@ -258,4 +260,4 @@ def onValueChange(panelValue, prev):
     tscript_dat.run()
     tscript_dat.destroy()
     parent.OPCREATE.par.winclose.pulse()
-    installer.CallHook('_PostPlaceOp', clone)
+    op.FAMREGISTRY.CallHook(_get_family(), '_PostPlaceOp', clone)

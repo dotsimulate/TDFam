@@ -28,20 +28,6 @@ class StubManager:
 		self.ownerComp = ownerComp
 		self.registry = registry
 
-	def _call_hook(self, installer, hook_name, *args):
-		"""Call a hook on the installer if it exists."""
-		hook = getattr(installer, hook_name, None)
-		if hook and callable(hook):
-			return hook(*args)
-		return None
-
-
-	def _call_hook(self, installer, hook_name, *args):
-		"""Call a hook on the installer if it exists."""
-		hook = getattr(installer, hook_name, None)
-		if hook and callable(hook):
-			return hook(*args)
-		return None
 
 	def _get_first_element(self, s):
 		"""Returns the first element of a set/list or None if empty."""
@@ -68,20 +54,21 @@ class StubManager:
 			return None
 
 		# Hook: PreStub - can return False to skip
-		if self._call_hook(installer, '_PreStub', comp) is False:
+		if self.registry.CallHook(family_name, '_PreStub', comp) is False:
 			print(f"createStub: Skipped {comp.path} by PreStub hook")
 			return None
 
 		name = comp.name
-		category_tags = self._call_hook(installer, '_GetCategoryTags') or set()
+		category_tags = self.registry._GetCategoryTags(family_name) or set()
 		op_type = self.registry.TagManager.get_operator_type(comp, family_name, category_tags)
 
 		print(f"createStub: Creating stub for {comp.path} with type '{op_type}'")
 		
 		# Capture children params before destruction
 		children_params = self._capture_children_params(comp)
-		# TODO: call hook with children_params
-		# comp.store('children_params', children_params)
+		
+		# Hook: CaptureChildrenParams
+		self.registry.CallHook(family_name, '_CaptureChildrenParams', comp, children_params)
 
 		# Remove all children except ins and outs
 		children = comp.findChildren(depth=1)
@@ -138,7 +125,7 @@ class StubManager:
 		comp.allowCooking = False
 
 		# Hook: PostStub
-		self._call_hook(installer, '_PostStub', comp, comp)
+		self.registry.CallHook(family_name, '_PostStub', comp, comp)
 
 		return comp
 
@@ -272,8 +259,8 @@ class StubManager:
 			print(f"replaceStub: Invalid stub tag on {stub.path}")
 			return None
 		
-		# Hook: PreReplace
-		if self._call_hook(installer, '_PreReplace', stub) is False:
+		# Hook: PreReplace - can return False to skip
+		if self.registry.CallHook(family_name, '_PreReplace', stub) is False:
 			print(f"replaceStub: Skipped {stub.path} by PreReplace hook")
 			return None
 
@@ -341,10 +328,9 @@ class StubManager:
 
 			# Restore children params
 			children_data = stub.fetch('children_params', {})
-			# self._restore_children_params(new_comp, children_data)
 
 			# Hook: PreserveSpecialParams
-			# self._call_hook(installer, '_PreserveSpecialParams', new_comp, params)
+			self.registry.CallHook(family_name, '_PreserveSpecialParams', new_comp, params)
 
 			# Restore connections
 			self._restore_connections(new_comp, stub)
@@ -354,7 +340,7 @@ class StubManager:
 			new_comp.bypass = stub.fetch('bypass', False)
 
 			# Hook: PostReplace
-			self._call_hook(installer, '_PostReplace', new_comp, stub)
+			self.registry.CallHook(family_name, '_PostReplace', new_comp, stub)
 		except:
 			print(f"replaceStub: Failed to replace {stub.path}")
 		finally:
@@ -440,7 +426,7 @@ class StubManager:
 		if not installer:
 			return []
 
-		excluded_tags = self._call_hook(installer, '_GetExcludedTags') or set()
+		excluded_tags = self.registry.CallHook(family_name, '_GetExcludedTags') or set()
 
 		search_root = network or op('/')
 		depth = 1 if network else None
@@ -474,7 +460,7 @@ class StubManager:
 		if not installer:
 			return []
 
-		excluded_tags = self._call_hook(installer, '_GetExcludedTags') or set()
+		excluded_tags = self.registry._GetExcludedTags(family_name) or set()
 		excluded_lower = {t.lower() for t in excluded_tags}
 
 		search_root = network or op('/')

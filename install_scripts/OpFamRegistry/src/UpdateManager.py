@@ -24,12 +24,6 @@ class UpdateManager:
 		self.ownerComp = ownerComp
 		self.registry = registry
 
-	def _call_hook(self, installer, hook_name, *args):
-		"""Call a hook on the installer if it exists."""
-		hook = getattr(installer, hook_name, None)
-		if hook and callable(hook):
-			return hook(*args)
-		return None
 
 
 	def find_matching_master(self, family_name, comp):
@@ -51,7 +45,7 @@ class UpdateManager:
 		if not installer:
 			return (None, None, 'none')
 
-		category_tags = self._call_hook(installer, '_GetCategoryTags') or set()
+		category_tags = self.registry.CallHook(family_name, '_GetCategoryTags') or set()
 		
 		# Try matching by type tag
 		if self.registry.TagManager.has_operator_type_tag(comp, family_name, category_tags):
@@ -124,7 +118,7 @@ class UpdateManager:
 					return (False, f"Error loading tox {source}: {e}")
 
 			# Hook: PreUpdate
-			if self._call_hook(installer, '_PreUpdate', old_comp, master_op) is False:
+			if self.registry.CallHook(family_name, '_PreUpdate', old_comp, master_op) is False:
 				if is_file_loaded and master_op:
 					master_op.destroy()
 				return (False, f"Update cancelled by PreUpdate hook for {old_comp.path}")
@@ -183,7 +177,7 @@ class UpdateManager:
 					self._copy_par(p, old_pars[0])
 
 			# Hook: PreserveSpecialParams
-			self._call_hook(installer, '_PreserveSpecialParams', new_comp, old_comp)
+			self.registry.CallHook(family_name, '_PreserveSpecialParams', new_comp, old_comp)
 
 			# Restore connections
 			for i in range(min(len(new_comp.inputConnectors), len(old_comp.inputConnectors))):
@@ -206,7 +200,7 @@ class UpdateManager:
 			new_comp.name = old_name
 
 			# Hook: PostUpdate
-			self._call_hook(installer, '_PostUpdate', new_comp)
+			self.registry.CallHook(family_name, '_PostUpdate', new_comp)
 
 			return (True, f"Updated {new_comp.path} (matched via {match_method})")
 
@@ -228,7 +222,7 @@ class UpdateManager:
 		if not installer:
 			return []
 
-		excluded_tags = self._call_hook(installer, '_GetExcludedTags') or set()
+		excluded_tags = self.registry.CallHook(family_name, '_GetExcludedTags') or set()
 
 		search_root = network or op('/')
 		depth = 1 if network else None
@@ -261,7 +255,7 @@ class UpdateManager:
 			return {'without_matches': [], 'updateable': [], 'with_type_tags': [], 'with_ext_object': []}
 
 		operators_folder = installer.operators_comp
-		category_tags = self._call_hook(installer, '_GetCategoryTags') or set()
+		category_tags = self.registry._GetCategoryTags(family_name) or set()
 
 		results = {
 			'with_type_tags': [],
