@@ -154,7 +154,7 @@ class OpFamCreateExt:
         self.ownerComp.nodeY = self.node_y
         self.ShortcutComp.par.opshortcut = self.FamilyName.val
 
-        if self.ownerComp.par.Install == 1:
+        if self.ownerComp.par.Install.eval():
             if not self.fam_registry.IsFamilyInstalled(self.FamilyName.val):
                 current_time = time.time()
                 if current_time - self.last_install_time >= self.install_cooldown:
