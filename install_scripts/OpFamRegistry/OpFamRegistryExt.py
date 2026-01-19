@@ -19,13 +19,18 @@ class OpFamRegistryExt:
 		self.StubManager = StubManager(self.ownerComp, self)
 		self.UpdateManager = UpdateManager(self.ownerComp, self)
 		self.FileManager = FileManager(self.ownerComp, self)
+		self._dev_overwrite_mode = False
 #
 	def RegisterFamily(self, family_owner : OpFamCreateExt):
 		fam_name = family_owner.Properties['family_name']
+		if fam_name in self.RegisteredFams and not self._is_overwrite(fam_name, family_owner):
+			debug(f'Family {fam_name} already registered. Skipping registration.')
+			return False
 		self._add_fam_tag(family_owner)
 		self.RegisteredFams.setItem(fam_name, family_owner)
 		debug(f'Registered family: {fam_name}')
 		self.EventEmitter.Emit('FamilyRegistered', fam_name, family_owner)
+		return True
 
 	def UnregisterFamily(self, fam_name):
 		"""Unregister a family by name."""
@@ -152,6 +157,14 @@ class OpFamRegistryExt:
 	def _add_fam_tag(self, family_owner):
 		if '<FAM>' not in family_owner.tags:
 			family_owner.tags.add('<FAM>')
+
+	def _is_overwrite(self, fam_name, family_owner = None):
+		"""
+		Check if new family can be overwritten.
+		# TODO: for the future we should compare version numbers and warn if lower
+		"""
+		is_reinit = (fam_name in self.RegisteredFams and self.RegisteredFams[fam_name] == family_owner)
+		return self._dev_overwrite_mode or is_reinit
 
 	@property
 	def NumFamiliesRegistered(self):

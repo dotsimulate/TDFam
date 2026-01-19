@@ -66,12 +66,14 @@ class OpFamCreateExt:
             print(f"Failed to create or get fam registry: {e}")
 
         if self.fam_registry:
-            self.fam_registry.RegisterFamily(self.ownerComp)
+            if self.fam_registry.RegisterFamily(self.ownerComp):
+                if self.operators_folder and not self.dynamic_refresh:
+                    self.fam_registry.FileManager.refresh_cache(self.FamilyName.val, self.operators_folder)
 
-            if self.operators_folder and not self.dynamic_refresh:
-                self.fam_registry.FileManager.refresh_cache(self.FamilyName.val, self.operators_folder)
-
-        self._initialize_installer()
+                self._initialize_installer()
+            else:
+                self.ownerComp.par.Install = False
+                ui.messageBox("Already Registered", f"Family {self.FamilyName.val} already registered from {self.fam_registry.RegisteredFams[self.FamilyName.val].path}.", buttons=['OK'])
 
     # region Properties
 
