@@ -209,10 +209,10 @@ class OpFamCreateExt:
         if self.operators_folder:
             self.fam_registry.FileManager.refresh_cache(self.FamilyName.val, self.operators_folder)
 
-        self.fam_registry.InstallFamily(self.FamilyName.val)
+        self.fam_registry.InstallFamily(self.ownerComp)
 
     def _do_uninstall(self):
-        self.fam_registry.UninstallFamily(self.FamilyName.val)
+        self.fam_registry.UninstallFamily(self.ownerComp)
 
     def _tag_operators(self, pattern='suffix'):
         self.fam_registry.TagManager.tag_operators(self.FamilyName.val, pattern)

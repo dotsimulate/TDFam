@@ -20,57 +20,20 @@ class OpFamRegistryExt:
 		self.UpdateManager = UpdateManager(self.ownerComp, self)
 		self.FileManager = FileManager(self.ownerComp, self)
 		self._dev_overwrite_mode = False
-#
-	def RegisterFamily(self, family_owner : OpFamCreateExt):
-		fam_name = family_owner.Properties['family_name']
-		if fam_name in self.RegisteredFams and not self._is_overwrite(fam_name, family_owner):
-			debug(f'Family {fam_name} already registered. Skipping registration.')
-			return False
-		self._add_fam_tag(family_owner)
-		self.RegisteredFams.setItem(fam_name, family_owner)
-		debug(f'Registered family: {fam_name}')
-		self.EventEmitter.Emit('FamilyRegistered', fam_name, family_owner)
-		return True
 
-	def UnregisterFamily(self, fam_name):
-		"""Unregister a family by name."""
-		if fam_name in self.RegisteredFams:
-			del self.RegisteredFams[fam_name]
-			debug(f'Unregistered family: {fam_name}')
-			self.EventEmitter.Emit('FamilyUnregistered', fam_name)
+# region Properties
 
-			# also uninstall if installed
-			if fam_name in self.InstalledFams:
-				self.UninstallFamily(fam_name)
+	@property
+	def NumFamiliesRegistered(self):
+		return len(self.RegisteredFams)
 
-	def InstallFamily(self, fam_name):
-		"""Install a family by name."""
-		family_owner = self.RegisteredFams.get(fam_name)
-		if not family_owner:
-			raise ValueError(f"Cannot install {fam_name}: not registered.")
-		
-		self._PreInstall(fam_name)
+	@property
+	def NumFamiliesInstalled(self):
+		return len(self.InstalledFams)
 
-		self.InstalledFams.setItem(fam_name, family_owner)
-		debug(f'Installed family: {fam_name}')
-		self.global_ui_injector.install(fam_name, family_owner)
-		self.EventEmitter.Emit('FamilyInstalled', fam_name, family_owner)
+# endregion Properties
 
-		self._PostInstall(fam_name)
-
-	def UninstallFamily(self, fam_name):
-		"""Uninstall a family by name."""
-		self._PreUninstall(fam_name)
-
-		if fam_name in self.InstalledFams:
-			del self.InstalledFams[fam_name]
-			debug(f'Uninstalled family: {fam_name}')
-			self.global_ui_injector.uninstall(fam_name)
-			self.EventEmitter.Emit('FamilyUninstalled', fam_name)
-			
-			self._PostUninstall(fam_name)
-			return True
-		return False
+# region Family Housekeeping
 
 	def IsFamilyInstalled(self, fam_name):
 		"""Public API to check if a family is installed."""
@@ -105,54 +68,151 @@ class OpFamRegistryExt:
 			pass
 		return None
 
+	def ValidateFamilyOwner(self, fam_name, family_owner):
+		"""
+		Check if family owner from argument is the same as the registered one.
+		Returns True if they match or if family_owner is None (for internal calls), 
+		False if they don't match.
+		"""
+		if family_owner is None:
+			return False
+		
+		actual_owner = self.RegisteredFams.get(fam_name, None)
+		if not actual_owner:
+			return True # If family doesn't exist, we don't have an owner to compare against
+			
+		return actual_owner == family_owner
 
-	def UpdateFamilyName(self, old_name, new_name):
-		# send event if indeed renamed
-		if old_name in self.RegisteredFams or old_name in self.InstalledFams:
-			family_owner = self.RegisteredFams.get(old_name) or self.InstalledFams.get(old_name)
-			self.EventEmitter.Emit('FamilyRenamed', old_name, new_name, family_owner)
-			debug(f'Family renamed: {old_name} -> {new_name}')
+# endregion Family Housekeeping
 
-		# Collect family owner from either list
-		family_owner = None
+# region Family Management
+
+	def RegisterFamily(self, family_owner : OpFamCreateExt):
+		fam_name = family_owner.Properties['family_name']
+		if fam_name in self.RegisteredFams and not self._is_overwrite(fam_name, family_owner):
+			debug(f'Family {fam_name} already registered. Skipping registration.')
+			return False
+		self._add_fam_tag(family_owner)
+		self.RegisteredFams.setItem(fam_name, family_owner)
+		debug(f'Registered family: {fam_name}')
+		self.EventEmitter.Emit('FamilyRegistered', fam_name, family_owner)
+		return True
+
+	def UnregisterFamily(self, family_owner_or_name):
+		"""Unregister a family by name or owner instance."""
+		if hasattr(family_owner_or_name, 'Properties'):
+			fam_name = family_owner_or_name.Properties['family_name']
+		else:
+			fam_name = family_owner_or_name
+
+		if fam_name in self.RegisteredFams:
+			del self.RegisteredFams[fam_name]
+			debug(f'Unregistered family: {fam_name}')
+			self.EventEmitter.Emit('FamilyUnregistered', fam_name)
+
+			# also uninstall if installed
+			if fam_name in self.InstalledFams:
+				self.UninstallFamily(family_owner_or_name if not isinstance(family_owner_or_name, str) else fam_name)
+
+	def InstallFamily(self, family_owner):
+		"""Install a family by owner."""
+		fam_name = family_owner.Properties['family_name'] if not isinstance(family_owner, str) else family_owner
+		
+		# If it's a string, we still need the actual owner for installation logic
+		if isinstance(family_owner, str):
+			family_owner = self.RegisteredFams.get(fam_name)
+			
+		if not family_owner:
+			raise ValueError(f"Cannot install {fam_name}: not registered.")
+		
+		self._PreInstall(fam_name)
+
+		self.InstalledFams.setItem(fam_name, family_owner)
+		debug(f'Installed family: {fam_name}')
+		self.global_ui_injector.install(fam_name, family_owner)
+		self.EventEmitter.Emit('FamilyInstalled', fam_name, family_owner)
+
+		self._PostInstall(fam_name)
+
+	def UninstallFamily(self, family_owner):
+		"""Uninstall a family by owner."""
+		fam_name = family_owner.Properties['family_name'] if not isinstance(family_owner, str) else family_owner
+		
+		self._PreUninstall(fam_name)
+
+		if fam_name in self.InstalledFams:
+			del self.InstalledFams[fam_name]
+			debug(f'Uninstalled family: {fam_name}')
+			self.global_ui_injector.uninstall(fam_name)
+			self.EventEmitter.Emit('FamilyUninstalled', fam_name)
+			
+			self._PostUninstall(fam_name)
+			return True
+		return False
+
+	def UpdateFamilyName(self, family_owner, new_name):
+		# Capture old name from owner before it's updated elsewhere
+		old_name = family_owner.Properties['family_name']
+		
+		if old_name == new_name:
+			return True
+
+		# Validate owner
+		if not self.ValidateFamilyOwner(old_name, family_owner):
+			debug(f'UpdateFamilyName ignored: owner mismatch for {old_name}')
+			return False
+
+		# Update registry storage
 		if old_name in self.RegisteredFams:
-			family_owner = self.RegisteredFams[old_name]
 			del self.RegisteredFams[old_name]
 			self.RegisteredFams.setItem(new_name, family_owner)
 
 		if old_name in self.InstalledFams:
-			family_owner = self.InstalledFams[old_name] # Should be same object
 			del self.InstalledFams[old_name]
 			self.InstalledFams.setItem(new_name, family_owner)
 			
 			# Only update global UI if installed
 			self.global_ui_injector.update_family_name(old_name, new_name)
 
-		# Update properties and shortcut if we found the family owner (installed or not)
-		if family_owner:
-			if hasattr(family_owner, 'Properties'):
-				family_owner.Properties['family_name'] = new_name
-			
-			if hasattr(family_owner, 'ShortcutComp'):
-				comp = family_owner.ShortcutComp
-				if comp:
-					comp.par.opshortcut = new_name
+		# Update properties and shortcut
+		if hasattr(family_owner, 'Properties'):
+			family_owner.Properties['family_name'] = new_name
+		
+		if hasattr(family_owner, 'ShortcutComp'):
+			comp = family_owner.ShortcutComp
+			if comp:
+				comp.par.opshortcut = new_name
+		
+		# send event now that we actually succeeded
+		self.EventEmitter.Emit('FamilyRenamed', old_name, new_name, family_owner)
+		debug(f'Family renamed: {old_name} -> {new_name}')
+		
+		return True
 	
-	def UpdateFamilyColor(self, fam_name, new_color):
+	def UpdateFamilyColor(self, family_owner, new_color):
 		"""Update family color in UI elements."""
+		fam_name = family_owner.Properties['family_name']
+		
+		# Validate owner
+		if not self.ValidateFamilyOwner(fam_name, family_owner):
+			debug(f'UpdateFamilyColor ignored: owner mismatch for {fam_name}')
+			return False
+
 		if fam_name in self.InstalledFams:
-			# Update local property first (if not already done by caller)
-			family_owner = self.InstalledFams[fam_name]
-			# The caller (OpFamExt) usually updates its own property, but we ensure consistency here if needed.
-			# But typically caller calls this AFTER updating property.
-			
 			self.global_ui_injector.update_family_color(fam_name, new_color)
+		
+		return True
 
 	def onRegistryChangeCallback(self, cells, prev):
+		"""This checks deletion of family owners for deregistration."""
 		for idx, _cell in enumerate(cells):
 			_val = _cell.val
 			if _val != prev[idx] and _val == 'None':
 				self.UnregisterFamily(prev[idx])
+
+# endregion Family Management
+
+# region Internal Helpers
 
 	def _add_fam_tag(self, family_owner):
 		if '<FAM>' not in family_owner.tags:
@@ -166,16 +226,9 @@ class OpFamRegistryExt:
 		is_reinit = (fam_name in self.RegisteredFams and self.RegisteredFams[fam_name] == family_owner)
 		return self._dev_overwrite_mode or is_reinit
 
-	@property
-	def NumFamiliesRegistered(self):
-		return len(self.RegisteredFams)
+# endregion Internal Helpers
 
-	@property
-	def NumFamiliesInstalled(self):
-		return len(self.InstalledFams)
-
-
-	# ==================== Hook Integration ====================
+# region Hook Integration
 
 	def CallHook(self, fam_name, hook_name, *args):
 		"""
@@ -283,3 +336,5 @@ class OpFamRegistryExt:
 	def _CaptureChildrenParams(self, fam_name, comp, children_data):
 		info = {'comp': comp, 'children_data': children_data, 'about': 'Modify children_data in place'}
 		return self._dispatch_hook(fam_name, 'onCaptureChildrenParams', info)
+
+# endregion Hook Integration
