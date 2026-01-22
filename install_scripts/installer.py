@@ -170,9 +170,14 @@ class OpFamCreateExt:
         if internal and not force:
             force = internal.par.Force.eval()
 
+        # If registry exists and has equal or greater version (and force is not set), keep it
+        if sys_registry and not force and self._check_version(sys_registry):
+            return sys_registry
+
+        # If we get here with a registry, it needs to be replaced (force=True or template is newer)
         previous_registered_fams = {}
         previous_installed_fams = {}
-        if force and sys_registry:
+        if sys_registry:
             previous_registered_fams = sys_registry.RegisteredFams
             previous_installed_fams = sys_registry.InstalledFams
             sys_registry.destroy()
@@ -196,6 +201,75 @@ class OpFamCreateExt:
                 sys_registry.InstallFamily(fam_name)
 
         return sys_registry
+
+    def _check_version(self, comp_check_against):
+        """
+        Compare version of existing registry with template version.
+
+        Args:
+            comp_check_against: The existing registry component to check
+
+        Returns:
+            bool: True if existing version >= template version (keep existing),
+                  False if template version is greater (should update)
+        """
+
+        def _parse_version(ver_string):
+            """
+            Parse version string to tuple for comparison.
+
+            Args:
+                ver_string: Version string like "1.2.3" or "v1.2.3"
+
+            Returns:
+                tuple: (1, 2, 3) or None if invalid
+            """
+            if not ver_string:
+                return None
+            try:
+                ver_string = ver_string.lstrip('vV')
+                return tuple(int(x) for x in ver_string.split('.'))
+            except:
+                return None
+            
+        template = self.ownerComp.op('OpFamRegistry')
+        if not template:
+            return True  # No template, keep existing
+
+        # Get existing version
+        existing_version = None
+        if hasattr(comp_check_against.par, 'Version'):
+            existing_version = _parse_version(str(comp_check_against.par.Version.eval()))
+
+        # Get template version
+        template_version = None
+        if hasattr(template.par, 'Version'):
+            template_version = _parse_version(str(template.par.Version.eval()))
+
+        # If existing has no version but template does, force overwrite
+        if existing_version is None and template_version is not None:
+            return False
+
+        # If template has no version, keep existing
+        if template_version is None:
+            return True
+
+        # If major version differs, prompt user
+        if existing_version[0] != template_version[0]:
+            existing_str = '.'.join(str(x) for x in existing_version)
+            template_str = '.'.join(str(x) for x in template_version)
+            choice = ui.messageBox(
+                'Major Version Change',
+                f'Registry major version change detected.\n\nExisting: v{existing_str}\nNew: v{template_str}\n\nProceed with update?',
+                buttons=['Update', 'Keep Existing']
+            )
+            return choice != 0  # 0 = Update (return False), 1 = Keep Existing (return True)
+
+        # Keep existing if version is >= template version
+        return existing_version >= template_version
+
+
+
 
     # endregion
 
