@@ -20,6 +20,220 @@ class OpFamRegistryExt:
 		self.UpdateManager = UpdateManager(self.ownerComp, self)
 		self.FileManager = FileManager(self.ownerComp, self)
 		self._dev_overwrite_mode = False
+		
+		run(lambda: self.postInit(), delayFrames=1, delayRef=op.TDResources)
+
+	def postInit(self):
+		# Skip if we're a staging copy (used by MockUpdate)
+		if self.ownerComp.path == '/sys/quiet':
+			return
+
+		# Check if we're post-update
+		is_post_update = self.ownerComp.fetch('post_update', False)
+		if is_post_update:
+			#self.ownerComp.unstore('post_update')
+			if hasattr(op, 'FAMREGISTRY') and self.ownerComp == op.FAMREGISTRY:
+				# we just update the global registry in place, so we can restore families
+				# Restore Registered and Installed families
+				restored_registered = self.ownerComp.fetch('RegisteredFams', {})
+				restored_installed = self.ownerComp.fetch('InstalledFams', {})
+
+				for _reg_fam in restored_registered:
+					self.RegisterFamily(restored_registered[_reg_fam])
+				for _inst_fam in restored_installed:
+					self.InstallFamily(restored_installed[_inst_fam])
+			else:
+				# we update a local registry, we need to reconcile with global
+				self._reconcile_global_registry()
+
+			self.ownerComp.unstore('post_update')
+			self.ownerComp.unstore('RegisteredFams')
+			self.ownerComp.unstore('InstalledFams')
+
+			
+
+	def _reconcile_global_registry(self):
+		"""
+		Check for existing global registry and handle version reconciliation.
+
+		If we ARE the global registry (op.FAMREGISTRY), do nothing.
+		If another registry exists:
+			- Compare versions
+			- Replace it if we're newer
+			- Destroy ourselves if it's newer or equal
+		If no global registry exists, become the global registry.
+		"""
+		
+		global_registry = op.FAMREGISTRY if hasattr(op, 'FAMREGISTRY') else None
+		if not global_registry:
+			# No existing global registry - become it
+			debug('OpFamRegistry: No existing global registry found. Becoming global registry.')
+			self._become_global_registry()
+			return
+
+		# Another registry exists - compare versions
+		should_keep_existing = self._check_version_against(global_registry)
+
+		if should_keep_existing:
+			# Existing registry is same or newer
+			debug(f'OpFamRegistry: Existing registry at {global_registry.path} is same or newer.')
+			# Transfer any families we might have to the existing registry
+			# self._transfer_families_to(global_registry)
+		else:
+			# We are newer - replace the existing registry
+			debug(f'OpFamRegistry: We are newer than existing registry at {global_registry.path}. Replacing it.')
+			self._replace_global_registry(global_registry)
+
+	def _become_global_registry(self):
+		"""
+		Become the global registry at /sys/OpFamRegistry.
+
+		If already at /sys/OpFamRegistry, just sets the shortcut.
+		Otherwise, copies ourselves to /sys, positions relative to TDDialogs,
+		transfers families, and destroys the original.
+
+		Follows installer.py's _get_or_create_fam_registry pattern.
+		"""
+		sys_registry_path = '/sys/OpFamRegistry'
+
+		# If we're already at /sys/OpFamRegistry, just set the shortcut
+		if self.ownerComp.path == sys_registry_path:
+			self.ownerComp.par.opshortcut = 'FAMREGISTRY'
+			return
+
+		# We need to copy ourselves to /sys (same as installer.py)
+		sys_comp = op('/sys')
+		if not sys_comp:
+			debug('OpFamRegistry: /sys not found, cannot become global registry.')
+			return
+
+		# Copy ourselves to /sys
+		new_registry = sys_comp.copy(self.ownerComp, name='OpFamRegistry')
+		new_registry.allowCooking = True
+
+		# Position relative to TDDialogs (same as installer.py)
+		td_dialogs = sys_comp.op('TDDialogs')
+		if td_dialogs:
+			new_registry.nodeX = td_dialogs.nodeX
+			new_registry.nodeY = td_dialogs.nodeY - 200
+
+		# Set the shortcut
+		new_registry.par.opshortcut = 'FAMREGISTRY'
+
+		# Store families for new registry to restore in postInit
+		new_registry.store('post_update', True)
+		new_registry.store('RegisteredFams', dict(self.ownerComp.fetch('RegisteredFams', {})))
+		new_registry.store('InstalledFams', dict(self.ownerComp.fetch('InstalledFams', {})))
+
+		debug(f'OpFamRegistry: Copied to {new_registry.path}.')
+
+		# Destroy ourselves
+		# run(lambda: self.ownerComp.destroy(), delayFrames=1, delayRef=op.TDResources)
+		return new_registry
+
+	def _transfer_families_to(self, target_registry):
+		"""
+		Transfer our registered/installed families to another registry.
+
+		Args:
+			target_registry: The registry to transfer families to.
+		"""
+		if not target_registry or not hasattr(target_registry, 'RegisterFamily'):
+			return
+
+		for fam_name, fam_owner in self.RegisteredFams.items():
+			if fam_name not in target_registry.RegisteredFams:
+				target_registry.RegisterFamily(fam_owner)
+
+		for fam_name, fam_owner in self.InstalledFams.items():
+			if fam_name not in target_registry.InstalledFams:
+				target_registry.InstallFamily(fam_owner)
+
+	def _replace_global_registry(self, old_registry):
+		"""
+		Replace the existing global registry with ourselves.
+
+		Follows installer.py's _get_or_create_fam_registry pattern:
+		1. Capture families from old registry
+		2. Destroy old registry
+		3. Set ourselves as global registry
+		4. Re-register all families
+
+		Args:
+			old_registry: The existing registry to replace.
+		"""
+		# Capture families from old registry
+		previous_registered_fams = old_registry.RegisteredFams if hasattr(old_registry, 'RegisteredFams') else {}
+		previous_installed_fams = old_registry.InstalledFams if hasattr(old_registry, 'InstalledFams') else {}
+
+		# Destroy the old registry
+		old_registry.destroy()
+
+		# Become the global registry
+		new_global = self._become_global_registry()
+
+		
+
+	def _check_version_against(self, other_registry):
+		"""
+		Compare our version against another registry.
+
+		Args:
+			other_registry: The registry to compare against.
+
+		Returns:
+			bool: True if other_registry should be kept (is >= our version),
+			      False if we should replace it (we are newer).
+		"""
+		our_version = self._parse_version(self._get_version(self.ownerComp))
+		their_version = self._parse_version(self._get_version(other_registry))
+
+		# If we can't determine versions, keep existing
+		if our_version is None:
+			return True
+		if their_version is None:
+			return False  # We have a version, they don't - replace them
+
+		# Check for major version difference
+		if our_version[0] != their_version[0]:
+			our_str = '.'.join(str(x) for x in our_version)
+			their_str = '.'.join(str(x) for x in their_version)
+			choice = ui.messageBox(
+				'Registry Version Conflict',
+				f'Multiple OpFamRegistry versions detected.\n\n'
+				f'Existing: v{their_str} at {other_registry.path}\n'
+				f'New: v{our_str} at {self.ownerComp.path}\n\n'
+				f'Which version should be used?',
+				buttons=['Use New', 'Keep Existing']
+			)
+			return choice != 0  # 0 = Use New (return False), 1 = Keep Existing (return True)
+
+		# Keep existing if their version >= our version
+		return their_version >= our_version
+
+	def _get_version(self, comp):
+		"""Get version string from a component."""
+		if comp and hasattr(comp.par, 'Version'):
+			return str(comp.par.Version.eval())
+		return None
+
+	def _parse_version(self, ver_string):
+		"""
+		Parse version string to tuple for comparison.
+
+		Args:
+			ver_string: Version string like '1.2.3' or 'v1.2.3'
+
+		Returns:
+			tuple: (1, 2, 3) or None if invalid.
+		"""
+		if not ver_string:
+			return None
+		try:
+			ver_string = ver_string.lstrip('vV')
+			return tuple(int(x) for x in ver_string.split('.'))
+		except:
+			return None
 
 # region Properties
 

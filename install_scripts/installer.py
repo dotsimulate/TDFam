@@ -180,6 +180,7 @@ class OpFamCreateExt:
         if sys_registry:
             previous_registered_fams = sys_registry.RegisteredFams
             previous_installed_fams = sys_registry.InstalledFams
+            debug(f'!!!!!!!!!! saving {len(previous_registered_fams)} registered families and {len(previous_installed_fams)} installed families from existing registry before replacement.')
             sys_registry.destroy()
             sys_registry = None
 
@@ -195,6 +196,7 @@ class OpFamCreateExt:
 
         if sys_registry:
             sys_registry.par.opshortcut = 'FAMREGISTRY'
+            debug(f'Restoring {len(previous_registered_fams)} registered families and {len(previous_installed_fams)} installed families to new registry.')
             for family in previous_registered_fams.values():
                 sys_registry.RegisterFamily(family)
             for fam_name in previous_installed_fams.keys():
