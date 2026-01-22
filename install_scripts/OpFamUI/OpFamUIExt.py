@@ -1,6 +1,6 @@
 '''Info Header Start
 Name : OpFamUIExt
-Author : Dan@DAN-4090
+Author : root
 Saveorigin : opfam-create_dev.48.toe
 Saveversion : 2023.12370
 Info Header End'''
@@ -18,7 +18,7 @@ class OpFamUIExt:
 		self.fam_menu = self.ownerComp.op('fam_menu')
 		self.parameters_ui = self.fam_menu.op('parameter1')
 		self.window = self.ownerComp.op('window1')
-		run(self.postInit(), delayFrames = 1)
+		run(self.postInit(), delayFrames = 1, delayRef=op.TDResources)
 
 	def postInit(self):
 		self.onFamilyTabSelected(next(iter(self.fam_registry.RegisteredFams), None))

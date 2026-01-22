@@ -152,8 +152,6 @@ class OpFamCreateExt:
             return (False, f"{self.FamilyName.val} already exists at {existing.path}")
 
         self.ownerComp.expose = self.expose
-        self.ownerComp.nodeX = self.node_x
-        self.ownerComp.nodeY = self.node_y
         self.ShortcutComp.par.opshortcut = self.FamilyName.val
 
         if self.ownerComp.par.Install == 1:

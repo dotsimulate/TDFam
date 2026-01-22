@@ -43,7 +43,7 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
             if self.operators_folder and not self.dynamic_refresh and self.fam_registry:
                 self.fam_registry.FileManager.refresh_cache(self.Properties['family_name'], self.operators_folder)
 
-        run(lambda: self._post_init_ext(), delayFrames=2)
+        run(lambda: self._post_init_ext(), delayFrames=2, delayRef=op.TDResources)
 
     def _post_init_ext(self):
         if self.ownerComp.par.Install.eval():
