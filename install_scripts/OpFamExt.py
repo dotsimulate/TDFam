@@ -170,19 +170,27 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
             self._do_uninstall()
 
     def onParFamily(self):
-        old_name = self.Properties['family_name']
         new_name = self.ownerComp.par.Family.eval()
-        if old_name != new_name:
-            if self.fam_registry:
-                self.fam_registry.UpdateFamilyName(old_name, new_name)
-            self.Properties['family_name'] = new_name
+        if self.fam_registry:
+            # The registry handles updating self.Properties['family_name'] and other logic
+            if not self.fam_registry.UpdateFamilyName(self.ownerComp, new_name):
+                # Revert parameter if registry rejected the update
+                self.ownerComp.par.Family = self.Properties['family_name']
+                ui.messageBox('Update Failed', f'Registry rejected name change for {self.ownerComp.name}. Check for owner mismatch.', buttons=['OK'])
 
     def onParColor(self):
         p = self.ownerComp.par
         color = [p.Colorr.eval(), p.Colorg.eval(), p.Colorb.eval()]
-        self.Properties['color'] = color
         if self.fam_registry:
-            self.fam_registry.UpdateFamilyColor(self.Properties['family_name'], color)
+            # The registry handles updating global UI, we update local property
+            if not self.fam_registry.UpdateFamilyColor(self.ownerComp, color):
+                # Revert parameters if registry rejected the update
+                old_color = self.Properties['color']
+                p.Colorr, p.Colorg, p.Colorb = old_color
+                ui.messageBox('Update Failed', f'Registry rejected color change for {self.ownerComp.name}. Check for owner mismatch.', buttons=['OK'])
+                return
+        
+        self.Properties['color'] = color
 
     def onParIndex(self):
         self.Properties['index'] = int(self.ownerComp.par.Index.eval())
