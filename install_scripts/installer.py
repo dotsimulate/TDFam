@@ -133,28 +133,19 @@ class OpFamCreateExt:
     def FolderCache(self):
         return self.Properties.getDependency('folder_cache')
 
-    @property
-    def ShortcutComp(self):
-        return self.ownerComp
-
-    def get_installer_expr(self, fam_name):
-        return f'op.{fam_name}'
-
     # endregion
 
     # region Initialization
 
     def _initialize_installer(self):
-        existing = getattr(op, self.FamilyName.val, None)
-        if existing is not None and existing != self.ownerComp:
+        if not self.fam_registry.ValidateFamilyOwner(self.FamilyName.val, self.ownerComp):
             if hasattr(self.ownerComp.par, 'Install'):
                 self.ownerComp.par.Install = False
-            return (False, f"{self.FamilyName.val} already exists at {existing.path}")
+            return (False, f"{self.FamilyName.val} already exists at {self.fam_registry.GetFamilyOwner(self.FamilyName.val).path}.")
 
         self.ownerComp.expose = self.expose
-        self.ShortcutComp.par.opshortcut = self.FamilyName.val
 
-        if self.ownerComp.par.Install == 1:
+        if self.ownerComp.par.Install.eval():
             if not self.fam_registry.IsFamilyInstalled(self.FamilyName.val):
                 current_time = time.time()
                 if current_time - self.last_install_time >= self.install_cooldown:
@@ -180,7 +171,6 @@ class OpFamCreateExt:
         if sys_registry:
             previous_registered_fams = sys_registry.RegisteredFams
             previous_installed_fams = sys_registry.InstalledFams
-            debug(f'!!!!!!!!!! saving {len(previous_registered_fams)} registered families and {len(previous_installed_fams)} installed families from existing registry before replacement.')
             sys_registry.destroy()
             sys_registry = None
 
@@ -196,7 +186,6 @@ class OpFamCreateExt:
 
         if sys_registry:
             sys_registry.par.opshortcut = 'FAMREGISTRY'
-            debug(f'Restoring {len(previous_registered_fams)} registered families and {len(previous_installed_fams)} installed families to new registry.')
             for family in previous_registered_fams.values():
                 sys_registry.RegisterFamily(family)
             for fam_name in previous_installed_fams.keys():

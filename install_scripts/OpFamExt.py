@@ -43,12 +43,6 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
             if self.operators_folder and not self.dynamic_refresh and self.fam_registry:
                 self.fam_registry.FileManager.refresh_cache(self.Properties['family_name'], self.operators_folder)
 
-        run(lambda: self._post_init_ext(), delayFrames=2, delayRef=op.TDResources)
-
-    def _post_init_ext(self):
-        if self.ownerComp.par.Install.eval():
-            self._do_install()
-
     def _sync_parameters(self):
         p = self.ownerComp.par
 
@@ -75,34 +69,6 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
     def index(self, value):
         self.Properties['index'] = int(value)
 
-    @property
-    def shortcut_mode(self):
-        if hasattr(self.ownerComp.par, 'Shortcutcomp'):
-            return self.ownerComp.par.Shortcutcomp.eval()
-        return 'me'
-
-    @property
-    def ShortcutComp(self):
-        mode = self.shortcut_mode
-        if mode == 'me':
-            return self.ownerComp
-        elif mode == 'parent()':
-            return self.ownerComp.parent()
-        elif mode == 'parent(2)':
-            return self.ownerComp.parent().parent()
-        return self.ownerComp
-
-    def get_installer_expr(self, fam_name):
-        mode = self.shortcut_mode
-        if mode == 'me':
-            return f'op.{fam_name}'
-        elif mode == 'parent()':
-            return f"op.{fam_name}.op('{self.ownerComp.name}')"
-        elif mode == 'parent(2)':
-            parent_name = self.ownerComp.parent().name
-            return f"op.{fam_name}.op('{parent_name}').op('{self.ownerComp.name}')"
-        return f'op.{fam_name}'
-
     # endregion
 
     # region Exposed API
@@ -119,6 +85,7 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         if install:
             self._do_install()
         else:
+            debug(f'Uninstalling family... from {self.ownerComp.path}')
             self._do_uninstall()
 
     def ExportConfig(self, path: str = None):
@@ -164,19 +131,16 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
     # region Parameter Handlers
 
     def onParInstall(self):
-        if self.ownerComp.par.Install.eval():
-            self._do_install()
-        else:
-            self._do_uninstall()
+        self.Install()
 
     def onParFamily(self):
         new_name = self.ownerComp.par.Family.eval()
         if self.fam_registry:
             # The registry handles updating self.Properties['family_name'] and other logic
             if not self.fam_registry.UpdateFamilyName(self.ownerComp, new_name):
-                # Revert parameter if registry rejected the update
-                self.ownerComp.par.Family = self.Properties['family_name']
-                ui.messageBox('Update Failed', f'Registry rejected name change for {self.ownerComp.name}. Check for owner mismatch.', buttons=['OK'])
+                # Revert parameter if registry rejected the update, try to reinit/register with new name
+                self.ownerComp.par.reinitextensions.pulse()
+                # 
 
     def onParColor(self):
         p = self.ownerComp.par
@@ -201,9 +165,6 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
     def onParOpfolder(self):
         self.Properties['operators_folder'] = self.ownerComp.par.Opfolder.eval()
         self._refresh_folder()
-
-    def onParShortcutcomp(self):
-        self.ShortcutComp.par.opshortcut = self.FamilyName.val
 
     def onParNamingconvention(self):
         self.Properties['naming_convention'] = self.ownerComp.par.Namingconvention.eval()

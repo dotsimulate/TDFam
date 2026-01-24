@@ -27,28 +27,24 @@ class OpFamRegistryExt:
 		# Skip if we're a staging copy (used by MockUpdate)
 		if self.ownerComp.path == '/sys/quiet':
 			return
+		
+		if hasattr(op, 'FAMREGISTRY') and self.ownerComp == op.FAMREGISTRY:
+			# we just update the global registry in place, so we can restore families
+			# Restore Registered and Installed families
+			restored_registered = self.ownerComp.fetch('RegisteredFams', {})
+			restored_installed = self.ownerComp.fetch('InstalledFams', {})
 
-		# Check if we're post-update
-		is_post_update = self.ownerComp.fetch('post_update', False)
-		if is_post_update:
-			#self.ownerComp.unstore('post_update')
-			if hasattr(op, 'FAMREGISTRY') and self.ownerComp == op.FAMREGISTRY:
-				# we just update the global registry in place, so we can restore families
-				# Restore Registered and Installed families
-				restored_registered = self.ownerComp.fetch('RegisteredFams', {})
-				restored_installed = self.ownerComp.fetch('InstalledFams', {})
-
-				for _reg_fam in restored_registered:
-					self.RegisterFamily(restored_registered[_reg_fam])
-				for _inst_fam in restored_installed:
-					self.InstallFamily(restored_installed[_inst_fam])
-			else:
+			for _reg_fam in restored_registered:
+				self.RegisterFamily(restored_registered[_reg_fam])
+			for _inst_fam in restored_installed:
+				self.InstallFamily(restored_installed[_inst_fam])
+		else:
+			# Check if we're post-update
+			is_post_update = self.ownerComp.fetch('post_update', False)
+			if is_post_update:
 				# we update a local registry, we need to reconcile with global
 				self._reconcile_global_registry()
-
-			self.ownerComp.unstore('post_update')
-			self.ownerComp.unstore('RegisteredFams')
-			self.ownerComp.unstore('InstalledFams')
+				self.ownerComp.unstore('post_update')
 
 			
 
@@ -307,7 +303,7 @@ class OpFamRegistryExt:
 			debug(f'Family {fam_name} already registered. Skipping registration.')
 			return False
 		self._add_fam_tag(family_owner)
-		self.RegisteredFams.setItem(fam_name, family_owner)
+		self._setFamilyDict(self.RegisteredFams, fam_name, family_owner)
 		debug(f'Registered family: {fam_name}')
 		self.EventEmitter.Emit('FamilyRegistered', fam_name, family_owner)
 		return True
@@ -320,18 +316,20 @@ class OpFamRegistryExt:
 			fam_name = family_owner_or_name
 
 		if fam_name in self.RegisteredFams:
-			del self.RegisteredFams[fam_name]
+			self._deleteItemFromFamilyDict(self.RegisteredFams, fam_name)
 			debug(f'Unregistered family: {fam_name}')
 			self.EventEmitter.Emit('FamilyUnregistered', fam_name)
 
 			# also uninstall if installed
 			if fam_name in self.InstalledFams:
+				debug(f'Also uninstalling family {fam_name} as part of unregistration.')
 				self.UninstallFamily(family_owner_or_name if not isinstance(family_owner_or_name, str) else fam_name)
 
 	def InstallFamily(self, family_owner):
 		"""Install a family by owner."""
 		fam_name = family_owner.Properties['family_name'] if not isinstance(family_owner, str) else family_owner
-		
+		if not self.ValidateFamilyOwner(fam_name, family_owner):
+			return False
 		# If it's a string, we still need the actual owner for installation logic
 		if isinstance(family_owner, str):
 			family_owner = self.RegisteredFams.get(fam_name)
@@ -341,7 +339,7 @@ class OpFamRegistryExt:
 		
 		self._PreInstall(fam_name)
 
-		self.InstalledFams.setItem(fam_name, family_owner)
+		self._setFamilyDict(self.InstalledFams, fam_name, family_owner)
 		debug(f'Installed family: {fam_name}')
 		self.global_ui_injector.install(fam_name, family_owner)
 		self.EventEmitter.Emit('FamilyInstalled', fam_name, family_owner)
@@ -351,11 +349,13 @@ class OpFamRegistryExt:
 	def UninstallFamily(self, family_owner):
 		"""Uninstall a family by owner."""
 		fam_name = family_owner.Properties['family_name'] if not isinstance(family_owner, str) else family_owner
+		if not self.ValidateFamilyOwner(fam_name, family_owner):
+			return False
 		
 		self._PreUninstall(fam_name)
 
 		if fam_name in self.InstalledFams:
-			del self.InstalledFams[fam_name]
+			self._deleteItemFromFamilyDict(self.InstalledFams, fam_name)
 			debug(f'Uninstalled family: {fam_name}')
 			self.global_ui_injector.uninstall(fam_name)
 			self.EventEmitter.Emit('FamilyUninstalled', fam_name)
@@ -378,24 +378,19 @@ class OpFamRegistryExt:
 
 		# Update registry storage
 		if old_name in self.RegisteredFams:
-			del self.RegisteredFams[old_name]
-			self.RegisteredFams.setItem(new_name, family_owner)
+			self._deleteItemFromFamilyDict(self.RegisteredFams, old_name)
+			self._setFamilyDict(self.RegisteredFams, new_name, family_owner)
 
 		if old_name in self.InstalledFams:
-			del self.InstalledFams[old_name]
-			self.InstalledFams.setItem(new_name, family_owner)
-			
+			self._deleteItemFromFamilyDict(self.InstalledFams, old_name)
+			self._setFamilyDict(self.InstalledFams, new_name, family_owner)
+
 			# Only update global UI if installed
 			self.global_ui_injector.update_family_name(old_name, new_name)
 
 		# Update properties and shortcut
 		if hasattr(family_owner, 'Properties'):
 			family_owner.Properties['family_name'] = new_name
-		
-		if hasattr(family_owner, 'ShortcutComp'):
-			comp = family_owner.ShortcutComp
-			if comp:
-				comp.par.opshortcut = new_name
 		
 		# send event now that we actually succeeded
 		self.EventEmitter.Emit('FamilyRenamed', old_name, new_name, family_owner)
@@ -412,7 +407,7 @@ class OpFamRegistryExt:
 			debug(f'UpdateFamilyColor ignored: owner mismatch for {fam_name}')
 			return False
 
-		if fam_name in self.InstalledFams:
+		if fam_name in self.RegisteredFams:
 			self.global_ui_injector.update_family_color(fam_name, new_color)
 		
 		return True
@@ -439,6 +434,15 @@ class OpFamRegistryExt:
 		"""
 		is_reinit = (fam_name in self.RegisteredFams and self.RegisteredFams[fam_name] == family_owner)
 		return self._dev_overwrite_mode or is_reinit
+	
+	def _setFamilyDict(self, _dict, fam_name, family_owner):
+		_dict.setItem(fam_name, family_owner)
+		self.ownerComp.store('RegisteredFams' if _dict is self.RegisteredFams else 'InstalledFams', dict(_dict))
+
+	def _deleteItemFromFamilyDict(self, _dict, fam_name):
+		if fam_name in _dict:
+			del _dict[fam_name]
+			self.ownerComp.store('RegisteredFams' if _dict is self.RegisteredFams else 'InstalledFams', dict(_dict))
 
 # endregion Internal Helpers
 

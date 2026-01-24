@@ -574,11 +574,12 @@ elif(source == 'input' and ({compatible_check})):
 		Updates the colors table and family owner children.
 		"""
 		try:
+			debug(f'Updating UI color for family {family_name} to {new_color}')
 			# 1. Update colors table (global rebuild is easiest to keep in sync)
 			self._update_colors_table()
 
 			# 2. Update owner colors
-			family_owner = self.owner.InstalledFams.get(family_name)
+			family_owner = self.owner.RegisteredFams.get(family_name)
 			if family_owner:
 				self._set_owner_colors(family_owner)
 				
