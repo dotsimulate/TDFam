@@ -5,6 +5,7 @@ from TagManager import TagManager
 from StubManager import StubManager
 from UpdateManager import UpdateManager
 from FileManager import FileManager
+from OpManager import OpManager
 
 class OpFamRegistryExt:
 	def __init__(self, ownerComp):
@@ -19,6 +20,8 @@ class OpFamRegistryExt:
 		self.StubManager = StubManager(self.ownerComp, self)
 		self.UpdateManager = UpdateManager(self.ownerComp, self)
 		self.FileManager = FileManager(self.ownerComp, self)
+		self.OpManager = OpManager(self.ownerComp, self)
+
 		self._dev_overwrite_mode = False
 		
 		run(lambda: self.postInit(), delayFrames=1, delayRef=op.TDResources)
@@ -106,6 +109,8 @@ class OpFamRegistryExt:
 		# Copy ourselves to /sys
 		new_registry = sys_comp.copy(self.ownerComp, name='OpFamRegistry')
 		new_registry.allowCooking = True
+		new_registry.op('internal_pars').par.Dev = False
+		new_registry.op('internal_pars').par.Force = False
 
 		# Position relative to TDDialogs (same as installer.py)
 		td_dialogs = sys_comp.op('TDDialogs')
@@ -420,6 +425,17 @@ class OpFamRegistryExt:
 				self.UnregisterFamily(prev[idx])
 
 # endregion Family Management
+
+# region Operator Management
+
+	def manageOpClone(self, fam_name, clone, is_file_based):
+		"""
+		Modify the placed operator before it is added to the scene.
+		"""
+		family_owner = self.GetFamilyOwner(fam_name)
+		self.OpManager.manageOpClone(family_owner, clone, is_file_based)
+		return clone
+# endregion Operator Management
 
 # region Internal Helpers
 

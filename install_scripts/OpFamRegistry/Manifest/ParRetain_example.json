@@ -1,0 +1,7 @@
+{
+	"base1/noise1": {
+		"amp": ["update"],
+		"harm": ["update", "stub"]
+	},
+	"base1/noise2": "exp"
+}
