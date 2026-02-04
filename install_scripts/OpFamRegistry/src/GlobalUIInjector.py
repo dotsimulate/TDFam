@@ -217,6 +217,7 @@ class GlobalUIInjector:
 lastnode = op(varTable['nodepath',1])
 source = varTable['source',1].val
 menu_type = varTable['menu_type',1].val
+varTable['lasttype',1] = menu_type  # Default: preserve TD's decision (fixes stale state bug)
 if(lastnode and source == 'output'):
 	type = lastnode.family
 	parent_comp = lastnode.parent() if lastnode else None
