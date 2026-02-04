@@ -195,20 +195,20 @@ class GlobalUIInjector:
 			setLastNodeType.text = ""
 			return
 
-		# Collect all compatible types and build checks
+		# Collect all compatible types and build checks (manifest-based detection)
 		fam_checks = []
 		all_compatible_types = set()
 		for fam_name, fam_owner in self.owner.InstalledFams.items():
-			fam_checks.append(f"if ('{fam_name}' in lastnode.tags):\n\t\ttype = '{fam_name}'")
+			fam_checks.append(f"if manifest and '<MANIFEST>' in manifest.tags and '{fam_name}' in manifest.tags:\n\t\ttype = '{fam_name}'")
 			for t in fam_owner.Properties.get('compatible_types', []):
 				all_compatible_types.add(t)
 
 		compatible_check = ' or '.join([f"menu_type=='{t}'" for t in all_compatible_types]) or "False"
-		
-		# Build per-family mouse pos checks
+
+		# Build per-family mouse pos checks (manifest-based detection)
 		mouse_checks = []
 		for fam_name in self.owner.InstalledFams.keys():
-			mouse_checks.append(f"if('{fam_name}' in child.tags):\n\t\t\t\ttype = '{fam_name}'")
+			mouse_checks.append(f"if child_manifest and '<MANIFEST>' in child_manifest.tags and '{fam_name}' in child_manifest.tags:\n\t\t\t\ttype = '{fam_name}'")
 
 		fam_check_str = "\n\tel".join(fam_checks)
 		mouse_check_str = "\n\t\t\tel".join(mouse_checks)
@@ -219,6 +219,8 @@ source = varTable['source',1].val
 menu_type = varTable['menu_type',1].val
 if(lastnode and source == 'output'):
 	type = lastnode.family
+	parent_comp = lastnode.parent() if lastnode else None
+	manifest = parent_comp.op('FamManifest') if parent_comp else None
 	{fam_check_str}
 	varTable['lasttype',1] = type
 elif(source == 'input' and ({compatible_check})):
@@ -229,6 +231,7 @@ elif(source == 'input' and ({compatible_check})):
 	type = menu_type
 	for child in currentParent.findChildren(maxDepth=1):
 		if (-5<(mousePos[0]-child.nodeX)*zoom<15 and child.nodeY+child.nodeHeight>mousePos[1] and mousePos[1]>child.nodeY):
+			child_manifest = child.op('FamManifest')
 			{mouse_check_str}
 			if type != menu_type:
 				varTable['lastnode',1] = child.name
