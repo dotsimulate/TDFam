@@ -149,19 +149,25 @@ def onValueChange(panelValue, prev):
     lookup_name = display_name.lower()
     normalized_name = lookup_name.replace(' ', '_')
 
-    # PlaceOp hook - can return:
-    #   True  = proceed with placement
-    #   False = cancel and close menu
-    #   None  = cancel but keep menu open (ActionOp)
-    #   'nohook' = no hook defined, proceed with placement
+    # PlaceOp hook - returns dict with:
+    #   returnValue: True = place, False = cancel+close, None = ActionOp
+    #   lookupName: possibly modified by callback
+    #   'nohook' string if no hook method exists
     result = op.FAMREGISTRY.CallHook(_get_family(), '_PlaceOp', panelValue, lookup_name)
-    if result is False:
+
+    if isinstance(result, dict):
+        should_place = result.get('returnValue', True)
+        lookup_name = result.get('lookupName', lookup_name)
+        normalized_name = lookup_name.replace(' ', '_')
+    else:
+        should_place = result if result != 'nohook' else True
+
+    if should_place is False:
         parent.OPCREATE.par.winclose.pulse()
         return
-    if result is None:
+    if should_place is None:
         # ActionOp - don't place, keep menu open
         return
-    # result is True or 'nohook' - proceed with placement
 
     # Get operator source - supports both embedded and file-based loading
     source_result = op.FAMREGISTRY.FileManager.get_operator_source(

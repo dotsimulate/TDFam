@@ -117,8 +117,15 @@ class UpdateManager:
 				except Exception as e:
 					return (False, f"Error loading tox {source}: {e}")
 
-			# Hook: PreUpdate
-			if self.registry.CallHook(family_name, '_PreUpdate', old_comp, master_op) is False:
+			# Hook: PreUpdate - can return False to skip, or modify master
+			pre_update = self.registry.CallHook(family_name, '_PreUpdate', old_comp, master_op)
+			if isinstance(pre_update, dict):
+				if pre_update.get('returnValue') is False:
+					if is_file_loaded and master_op:
+						master_op.destroy()
+					return (False, f"Update cancelled by PreUpdate hook for {old_comp.path}")
+				master_op = pre_update.get('master', master_op)
+			elif pre_update is False:
 				if is_file_loaded and master_op:
 					master_op.destroy()
 				return (False, f"Update cancelled by PreUpdate hook for {old_comp.path}")

@@ -509,8 +509,9 @@ class OpFamRegistryExt:
 		}
 		result = self._dispatch_hook(fam_name, 'onPlaceOp', info)
 		if result:
-			return result.get('returnValue', True)
-		return True
+			result.setdefault('returnValue', True)
+			return result
+		return {'returnValue': True, 'panelValue': panelValue, 'lookupName': lookup_name}
 
 	def _PostPlaceOp(self, fam_name, clone):
 		info = {'clone': clone, 'about': 'Customize the placed operator'}
@@ -520,8 +521,9 @@ class OpFamRegistryExt:
 		info = {'comp': comp, 'about': 'Return False to skip stubbing this operator'}
 		result = self._dispatch_hook(fam_name, 'onPreStub', info)
 		if result:
-			return result.get('returnValue', True)
-		return True
+			result.setdefault('returnValue', True)
+			return result
+		return {'returnValue': True, 'comp': comp}
 
 	def _PostStub(self, fam_name, stub, original):
 		info = {'stub': stub, 'original': original}
@@ -531,8 +533,9 @@ class OpFamRegistryExt:
 		info = {'stub': stub, 'about': 'Return False to skip replacing this stub'}
 		result = self._dispatch_hook(fam_name, 'onPreReplace', info)
 		if result:
-			return result.get('returnValue', True)
-		return True
+			result.setdefault('returnValue', True)
+			return result
+		return {'returnValue': True, 'stub': stub}
 
 	def _PostReplace(self, fam_name, new_comp, stub):
 		info = {'newComp': new_comp, 'stub': stub}
@@ -542,8 +545,9 @@ class OpFamRegistryExt:
 		info = {'oldComp': old_comp, 'master': master, 'about': 'Return False to skip updating this operator'}
 		result = self._dispatch_hook(fam_name, 'onPreUpdate', info)
 		if result:
-			return result.get('returnValue', True)
-		return True
+			result.setdefault('returnValue', True)
+			return result
+		return {'returnValue': True, 'oldComp': old_comp, 'master': master}
 
 	def _PostUpdate(self, fam_name, new_comp):
 		info = {'newComp': new_comp}

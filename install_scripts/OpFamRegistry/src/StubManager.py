@@ -53,8 +53,14 @@ class StubManager:
 			print(f"createStub: Family {family_name} not found")
 			return None
 
-		# Hook: PreStub - can return False to skip
-		if self.registry.CallHook(family_name, '_PreStub', comp) is False:
+		# Hook: PreStub - can return False to skip, or modify comp
+		pre_stub = self.registry.CallHook(family_name, '_PreStub', comp)
+		if isinstance(pre_stub, dict):
+			if pre_stub.get('returnValue') is False:
+				print(f"createStub: Skipped {comp.path} by PreStub hook")
+				return None
+			comp = pre_stub.get('comp', comp)
+		elif pre_stub is False:
 			print(f"createStub: Skipped {comp.path} by PreStub hook")
 			return None
 
@@ -259,8 +265,14 @@ class StubManager:
 			print(f"replaceStub: Invalid stub tag on {stub.path}")
 			return None
 		
-		# Hook: PreReplace - can return False to skip
-		if self.registry.CallHook(family_name, '_PreReplace', stub) is False:
+		# Hook: PreReplace - can return False to skip, or modify stub
+		pre_replace = self.registry.CallHook(family_name, '_PreReplace', stub)
+		if isinstance(pre_replace, dict):
+			if pre_replace.get('returnValue') is False:
+				print(f"replaceStub: Skipped {stub.path} by PreReplace hook")
+				return None
+			stub = pre_replace.get('stub', stub)
+		elif pre_replace is False:
 			print(f"replaceStub: Skipped {stub.path} by PreReplace hook")
 			return None
 
