@@ -6,45 +6,43 @@ class OpManager:
 		self.registry = registry
 
 
-	def manageOpClone(self, family_owner, clone, is_file_based):
+	def manageOpClone(self, family_owner, clone, is_file_based, op_name=None):
 		"""
 		Modify the placed operator before it is added to the scene.
 		"""
-		OpInfo, ParRetain, Shortcuts = self._validate_manifest(family_owner, clone)
+		OpInfo, ParRetain, Shortcuts = self._validate_manifest(family_owner, clone, op_name=op_name)
 
 		self._handle_OpInfo(family_owner, clone, OpInfo=OpInfo)
 		self._handle_Shortcuts(family_owner, clone, Shortcuts=Shortcuts)
+		self._tag_manifest(family_owner, clone, OpInfo)
 
 		self._handle_license(family_owner, clone)
 		self._handle_attributes(family_owner, clone, is_file_based)
 
-		####
 		return clone
 
-	def _validate_manifest(self, family_owner, _op):        
+	def _validate_manifest(self, family_owner, _op, op_name=None):
 		manifest = _op.op('FamManifest')
 		# Create manifest if it doesn't exist
 		if not manifest:
 			manifest_template = self.ownerComp.op('FamManifest')
 			manifest : baseCOMP =  _op.copy(manifest_template)
 
-		OpInfo = self._validate_OpInfo(family_owner, _op, manifest)
+		OpInfo = self._validate_OpInfo(family_owner, _op, manifest, op_name=op_name)
 		ParRetain = self._validate_ParRetain(family_owner, _op, manifest)
 		Shortcuts = self._validate_Shortcuts(family_owner, _op, manifest)
 
 		return OpInfo, ParRetain, Shortcuts
 
-	def _validate_OpInfo(self, family_owner, _op, manifest):
+	def _validate_OpInfo(self, family_owner, _op, manifest, op_name=None):
 		"""
 		Check if the operator has a FamManifest and OpInfo, and add them if not.
 		"""
 		_OpInfo = manifest.op('OpInfo')
-		# Create OpInfo if it doesn't exist
 		if not _OpInfo:
 			_OpInfo = manifest.create(textDAT, 'OpInfo')
 			_OpInfo.text = {}
-		
-		# Validate OpInfo, add fields if missing
+
 		OpInfo = json.loads(_OpInfo.text)
 		if not (_version := OpInfo.get('version', None)):
 			_version = _op.par.Version.eval() if _op.par['Version'] is not None else family_owner.par.Version.eval()
@@ -54,15 +52,13 @@ class OpManager:
 			_op_fam = family_owner.Properties['family_name']
 			OpInfo['op_fam'] = _op_fam
 
-		if not (_op_type := OpInfo.get('op_type', None)):
-			_op_type = 'something' # TODO: determine op type somehow if it's not in manifest
-			OpInfo['op_type'] = _op_type
+		if not OpInfo.get('op_name', None):
+			OpInfo['op_name'] = op_name or _op.name
 
-		if not (_op_name := OpInfo.get('op_name', None)):
-			_op_name = _op.name # TODO: determine op name somehow if it's not in manifest
-			OpInfo['op_name'] = _op_name
+		if not OpInfo.get('op_type', None):
+			OpInfo['op_type'] = 'something' # TODO: determine op type
 
-		_OpInfo.text = json.dumps(OpInfo, indent=4) # NOTE: this should be safe to do in any case, after all is said and done, right?
+		_OpInfo.text = json.dumps(OpInfo, indent=4)
 		return OpInfo
 
 	def _validate_Shortcuts(self, family_owner, _op, manifest):
@@ -80,6 +76,16 @@ class OpManager:
 			_ParRetain = manifest.create(textDAT, 'ParRetain')
 			_ParRetain.text = {}
 		return json.loads(_ParRetain.text)
+
+	def _tag_manifest(self, family_owner, _op, OpInfo):
+		manifest = _op.op('FamManifest')
+		if not manifest:
+			return
+		fam_name = OpInfo.get('op_fam', family_owner.Properties['family_name'])
+		if fam_name not in manifest.tags:
+			manifest.tags.add(fam_name)
+		if '<MANIFEST>' not in manifest.tags:
+			manifest.tags.add('<MANIFEST>')
 
 	def _handle_OpInfo(self, family_owner, _op, OpInfo = None):
 		if not OpInfo:

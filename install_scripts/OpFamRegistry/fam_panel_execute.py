@@ -233,7 +233,7 @@ def onValueChange(panelValue, prev):
         return
 
     # Manage op clone before placement
-    op.FAMREGISTRY.ext.OpFamRegistryExt.manageOpClone(_get_family(), clone, is_file_based)
+    op.FAMREGISTRY.ext.OpFamRegistryExt.manageOpClone(_get_family(), clone, is_file_based, op_name=lookup_name)
 
     pane = ui.panes.current.name
     # Run opplace via tscript DAT to enable Enter key for placement confirmation

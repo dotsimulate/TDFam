@@ -22,3 +22,6 @@ CrashAutoSave.*
 *.dmg
 *.exe
 *.DS_Store
+
+# Development
+active_dev/

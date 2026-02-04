@@ -428,12 +428,12 @@ class OpFamRegistryExt:
 
 # region Operator Management
 
-	def manageOpClone(self, fam_name, clone, is_file_based):
+	def manageOpClone(self, fam_name, clone, is_file_based, op_name=None):
 		"""
 		Modify the placed operator before it is added to the scene.
 		"""
 		family_owner = self.GetFamilyOwner(fam_name)
-		self.OpManager.manageOpClone(family_owner, clone, is_file_based)
+		self.OpManager.manageOpClone(family_owner, clone, is_file_based, op_name=op_name)
 		return clone
 # endregion Operator Management
 
