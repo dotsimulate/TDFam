@@ -139,50 +139,44 @@ def cook(scriptOp):
 
             # Create group index
             group_index = {}
-            if not group_table:
-                continue
-            for col in range(group_table.numCols):
-                group_name = group_table[0, col].val
-                for row in range(1, group_table.numRows):
-                    operator_name = group_table[row, col].val
-                    if operator_name:
-                        # Store both the original format and the normalized format
-                        normalized_name = operator_name.lower().replace(' ', '_')
-                        group_index[operator_name.lower()] = group_name  # For original format lookup
-                        group_index[normalized_name] = group_name  # For normalized format lookup
-            
-            # print(f"\nGroup index mapping:")
-            # print(group_index)
+            if group_table:
+                for col in range(group_table.numCols):
+                    group_name = group_table[0, col].val
+                    for row in range(1, group_table.numRows):
+                        operator_name = group_table[row, col].val
+                        if operator_name:
+                            normalized_name = operator_name.lower().replace(' ', '_')
+                            group_index[operator_name.lower()] = group_name
+                            group_index[normalized_name] = group_name
+
+            has_groups = len(group_index) > 0
 
             # Group nodes by their group
             grouped_nodes = {}
             for i in range(1, familyOps.numRows):
                 type = familyOps[i,'name'].val
-                if not type:  # Skip empty rows (group labels)
+                if not type:
                     continue
 
                 normalized_type = type.lower().replace(' ', '_')
 
-                # Check exclude flag
                 is_excluded = exclude_values.get(normalized_type, '0') == '1'
                 if is_excluded and exclude_behavior == 'hide':
-                    continue  # Skip this operator entirely
+                    continue
 
-                # print(f"\nProcessing operator: {type}")
                 label = familyOps[i,'label'].val
                 isFilter = familyOps[i,'type'].val == f'layouts/{currFamily}/defFilter'
 
-                # Get OS compatibility value
-                os_compat = os_values.get(normalized_type, '1')  # Default to '1' (compatible) if not found
+                os_compat = os_values.get(normalized_type, '1')
 
-                # Try both original and normalized formats for lookup
-                group_name = group_index.get(type.lower()) or group_index.get(normalized_type)
-
-                # Check show_ungrouped setting
-                if group_name is None:
-                    if show_ungrouped != '1':
-                        continue  # Skip ungrouped operators
-                    group_name = ungrouped_label
+                if has_groups:
+                    group_name = group_index.get(type.lower()) or group_index.get(normalized_type)
+                    if group_name is None:
+                        if show_ungrouped != '1':
+                            continue
+                        group_name = ungrouped_label
+                else:
+                    group_name = ''
 
                 #  print(f"Group: {group_name}")
 
@@ -252,18 +246,17 @@ def cook(scriptOp):
                         if group_name not in grouped_nodes:
                             grouped_nodes[group_name] = []
                         grouped_nodes[group_name].append(node)
-            # Get group order from group_mapping column order (left to right)
-            group_order = [group_table[0, col].val for col in range(group_table.numCols)]
-
-            # Build custom order index: {group_name: {op_name: row_index}}
+            group_order = []
             custom_order = {}
-            for col in range(group_table.numCols):
-                grp = group_table[0, col].val
-                custom_order[grp] = {}
-                for row in range(1, group_table.numRows):
-                    op_name = group_table[row, col].val
-                    if op_name:
-                        custom_order[grp][op_name.lower()] = row
+            if group_table:
+                group_order = [group_table[0, col].val for col in range(group_table.numCols)]
+                for col in range(group_table.numCols):
+                    grp = group_table[0, col].val
+                    custom_order[grp] = {}
+                    for row in range(1, group_table.numRows):
+                        op_name = group_table[row, col].val
+                        if op_name:
+                            custom_order[grp][op_name.lower()] = row
 
             # Get sort method from settings table
             sort_method = settings['sort_within_group', 1].val if settings and settings.row('sort_within_group') else 'alphabetical'
