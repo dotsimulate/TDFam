@@ -464,6 +464,7 @@ class StubManager:
 		manifests = search_root.findChildren(
 			type=COMP,
 			tags=[family_name, '<MANIFEST>'],
+			allTags=True,
 		)
 
 		operators = []
@@ -497,6 +498,7 @@ class StubManager:
 		manifests = search_root.findChildren(
 			type=COMP,
 			tags=[family_name, '<MANIFEST>', '<STUB>'],
+			allTags=True,
 		)
 
 		excluded_tags = self.registry._GetExcludedTags(family_name) or set()
