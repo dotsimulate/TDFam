@@ -149,19 +149,25 @@ def onValueChange(panelValue, prev):
     lookup_name = display_name.lower()
     normalized_name = lookup_name.replace(' ', '_')
 
-    # PlaceOp hook - can return:
-    #   True  = proceed with placement
-    #   False = cancel and close menu
-    #   None  = cancel but keep menu open (ActionOp)
-    #   'nohook' = no hook defined, proceed with placement
+    # PlaceOp hook - returns dict with:
+    #   returnValue: True = place, False = cancel+close, None = ActionOp
+    #   lookupName: possibly modified by callback
+    #   'nohook' string if no hook method exists
     result = op.FAMREGISTRY.CallHook(_get_family(), '_PlaceOp', panelValue, lookup_name)
-    if result is False:
+
+    if isinstance(result, dict):
+        should_place = result.get('returnValue', True)
+        lookup_name = result.get('lookupName', lookup_name)
+        normalized_name = lookup_name.replace(' ', '_')
+    else:
+        should_place = result if result != 'nohook' else True
+
+    if should_place is False:
         parent.OPCREATE.par.winclose.pulse()
         return
-    if result is None:
+    if should_place is None:
         # ActionOp - don't place, keep menu open
         return
-    # result is True or 'nohook' - proceed with placement
 
     # Get operator source - supports both embedded and file-based loading
     source_result = op.FAMREGISTRY.FileManager.get_operator_source(
@@ -226,32 +232,9 @@ def onValueChange(panelValue, prev):
         print(f"Error: Could not create operator '{lookup_name}'")
         return
 
-    clone.allowCooking = True
-    clone.bypass = False
+    # Manage op clone before placement
+    op.FAMREGISTRY.ext.OpFamRegistryExt.manageOpClone(_get_family(), clone, is_file_based, op_name=lookup_name)
 
-    # Apply family color to file-based ops if Colorfileops is enabled
-    if is_file_based and hasattr(installer.par, 'Colorfileops') and installer.par.Colorfileops.eval():
-        color = installer.par.Colorr.eval(), installer.par.Colorg.eval(), installer.par.Colorb.eval()
-        clone.color = color
-
-    # Handle license copying - check clone.family since master may not exist for file-based
-    # Only copy license if the installer has a License op
-    if clone.family == 'COMP' and license:
-        existing_license = clone.op('License')
-        if existing_license:
-            try:
-                existing_content = existing_license.par.Bodytext.eval()
-                current_content = license.par.Bodytext.eval()
-                if existing_content != current_content:
-                    existing_license.destroy()
-                    clone.copy(license)
-            except:
-                existing_license.destroy()
-                clone.copy(license)
-        else:
-            clone.copy(license)
-
-    clone.viewer = ui.preferences['network.viewer']
     pane = ui.panes.current.name
     # Run opplace via tscript DAT to enable Enter key for placement confirmation
     tscript_dat = op('/').create(textDAT, '__temp_opplace')

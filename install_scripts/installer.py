@@ -133,26 +133,17 @@ class OpFamCreateExt:
     def FolderCache(self):
         return self.Properties.getDependency('folder_cache')
 
-    @property
-    def ShortcutComp(self):
-        return self.ownerComp
-
-    def get_installer_expr(self, fam_name):
-        return f'op.{fam_name}'
-
     # endregion
 
     # region Initialization
 
     def _initialize_installer(self):
-        existing = getattr(op, self.FamilyName.val, None)
-        if existing is not None and existing != self.ownerComp:
+        if not self.fam_registry.ValidateFamilyOwner(self.FamilyName.val, self.ownerComp):
             if hasattr(self.ownerComp.par, 'Install'):
                 self.ownerComp.par.Install = False
-            return (False, f"{self.FamilyName.val} already exists at {existing.path}")
+            return (False, f"{self.FamilyName.val} already exists at {self.fam_registry.GetFamilyOwner(self.FamilyName.val).path}.")
 
         self.ownerComp.expose = self.expose
-        self.ShortcutComp.par.opshortcut = self.FamilyName.val
 
         if self.ownerComp.par.Install.eval():
             if not self.fam_registry.IsFamilyInstalled(self.FamilyName.val):

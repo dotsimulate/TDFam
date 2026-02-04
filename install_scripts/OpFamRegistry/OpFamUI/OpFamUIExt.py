@@ -1,7 +1,7 @@
 '''Info Header Start
 Name : OpFamUIExt
-Author : root
-Saveorigin : opfam-create_dev.48.toe
+Author : Dan@DAN-4090
+Saveorigin : opfam-create_dev.54.toe
 Saveversion : 2023.12370
 Info Header End'''
 
@@ -26,7 +26,7 @@ class OpFamUIExt:
 
 	@property
 	def fam_registry(self):
-		return getattr(op, 'FAMREGISTRY', None)
+		return getattr(op, 'FAMREGISTRY', None) if not (getattr(parent, 'OpFamRegistry', None) and parent.OpFamRegistry.op('internal_pars').par.Dev.eval()) else parent.OpFamRegistry
 	
 	@property
 	def general_settings(self):

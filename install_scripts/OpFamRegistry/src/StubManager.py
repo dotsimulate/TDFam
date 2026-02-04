@@ -35,6 +35,17 @@ class StubManager:
 			return e
 		return None
 
+	def _get_op_name_from_manifest(self, manifest):
+		"""Read op_name from a FamManifest's OpInfo."""
+		import json
+		op_info_dat = manifest.op('OpInfo')
+		if op_info_dat:
+			try:
+				return json.loads(op_info_dat.text).get('op_name', '')
+			except:
+				pass
+		return ''
+
 	def create_stub(self, family_name, comp):
 		"""
 		Create a lightweight stub of a component.
@@ -53,43 +64,51 @@ class StubManager:
 			print(f"createStub: Family {family_name} not found")
 			return None
 
-		# Hook: PreStub - can return False to skip
-		if self.registry.CallHook(family_name, '_PreStub', comp) is False:
+		# Hook: PreStub - can return False to skip, or modify comp
+		pre_stub = self.registry.CallHook(family_name, '_PreStub', comp)
+		if isinstance(pre_stub, dict):
+			if pre_stub.get('returnValue') is False:
+				print(f"createStub: Skipped {comp.path} by PreStub hook")
+				return None
+			comp = pre_stub.get('comp', comp)
+		elif pre_stub is False:
 			print(f"createStub: Skipped {comp.path} by PreStub hook")
 			return None
 
 		name = comp.name
-		category_tags = self.registry._GetCategoryTags(family_name) or set()
-		op_type = self.registry.TagManager.get_operator_type(comp, family_name, category_tags)
+		manifest = comp.op('FamManifest')
+		if manifest:
+			op_type = self._get_op_name_from_manifest(manifest)
+		else:
+			category_tags = self.registry._GetCategoryTags(family_name) or set()
+			op_type = self.registry.TagManager.get_operator_type(comp, family_name, category_tags)
 
 		print(f"createStub: Creating stub for {comp.path} with type '{op_type}'")
-		
+
 		# Capture children params before destruction
 		children_params = self._capture_children_params(comp)
-		
+
 		# Hook: CaptureChildrenParams
 		self.registry.CallHook(family_name, '_CaptureChildrenParams', comp, children_params)
 
-		# Remove all children except ins and outs
+		# Remove all children except ins, outs, and FamManifest
 		children = comp.findChildren(depth=1)
 		input_ops = [_input.inOP for _input in comp.inputConnectors]
 		output_ops = [_output.outOP for _output in comp.outputConnectors]
 		while children:
-			if children[-1] in input_ops or children[-1] in output_ops:
+			child = children[-1]
+			if child in input_ops or child in output_ops or child == manifest:
 				children = children[:-1]
 				continue
-			if children[-1]:
-				children[-1].destroy()
+			if child:
+				child.destroy()
 			else:
 				children = children[:-1]
 
-		# Store tags
-		comp.store('tags', comp.tags)
-
-		# Set stub tag and store type
+		# Tag manifest as stub
 		comp.store('op_type', op_type)
-		comp.tags.add('<STUB>')
-		comp.tags.add(f"{op_type}{family_name}stub")
+		if manifest:
+			manifest.tags.add('<STUB>')
 		comp.name = f"{name}"
 
 		# Store state
@@ -255,25 +274,29 @@ class StubManager:
 			print(f"replaceStub: Family {family_name} not found")
 			return None
 
-		if not family_name in stub.tags:
-			print(f"replaceStub: Invalid stub tag on {stub.path}")
+		stub_manifest = stub.op('FamManifest')
+		if not stub_manifest or family_name not in stub_manifest.tags:
+			print(f"replaceStub: No valid manifest on {stub.path}")
 			return None
-		
-		# Hook: PreReplace - can return False to skip
-		if self.registry.CallHook(family_name, '_PreReplace', stub) is False:
+
+		# Hook: PreReplace - can return False to skip, or modify stub
+		pre_replace = self.registry.CallHook(family_name, '_PreReplace', stub)
+		if isinstance(pre_replace, dict):
+			if pre_replace.get('returnValue') is False:
+				print(f"replaceStub: Skipped {stub.path} by PreReplace hook")
+				return None
+			stub = pre_replace.get('stub', stub)
+		elif pre_replace is False:
 			print(f"replaceStub: Skipped {stub.path} by PreReplace hook")
 			return None
 
-		# Get operator type
-		op_type = stub.fetch('op_type', None)
+		# Get operator type from manifest
+		op_type = self._get_op_name_from_manifest(stub_manifest)
 		if not op_type:
-			for tag in stub.tags:
-				if tag.endswith(f"{family_name}stub"):
-					op_type = tag.removesuffix(f"{family_name}stub")
-					break
-			if not op_type:
-				print(f"replaceStub: Invalid stub tag on {stub.path}")
-				return None
+			op_type = stub.fetch('op_type', None)
+		if not op_type:
+			print(f"replaceStub: No op_type found for {stub.path}")
+			return None
 
 		# Find master
 		# Find master
@@ -307,10 +330,19 @@ class StubManager:
 		if not new_comp:
 			raise Exception(f"replaceStub: Failed to create new component for {stub.path}")
 
-		# Merge tags with new_comp and restored tags
-		new_comp.tags = list(set(new_comp.tags) | set(stub.fetch('tags', [])))
-		new_comp.tags.remove('<STUB>')
-		new_comp.tags.remove(f"{op_type}{family_name}stub")
+		# Ensure manifest exists on new comp
+		new_manifest = new_comp.op('FamManifest')
+		if not new_manifest:
+			stub_manifest_copy = stub.op('FamManifest')
+			if stub_manifest_copy:
+				new_manifest = new_comp.copy(stub_manifest_copy)
+		if new_manifest:
+			if '<STUB>' in new_manifest.tags:
+				new_manifest.tags.remove('<STUB>')
+			if family_name not in new_manifest.tags:
+				new_manifest.tags.add(family_name)
+			if '<MANIFEST>' not in new_manifest.tags:
+				new_manifest.tags.add('<MANIFEST>')
 		
 		# Restore position/size
 		new_comp.nodeX = stub.nodeX
@@ -338,6 +370,12 @@ class StubManager:
 			# Restore state
 			new_comp.allowCooking = stub.fetch('cooking', 1)
 			new_comp.bypass = stub.fetch('bypass', False)
+
+			# Apply family color for file-based ops
+			if source_type == 'file' and hasattr(installer, 'ownerComp'):
+				fam_owner = installer.ownerComp
+				if hasattr(fam_owner.par, 'Colorfileops') and fam_owner.par.Colorfileops.eval():
+					new_comp.color = (fam_owner.par.Colorr.eval(), fam_owner.par.Colorg.eval(), fam_owner.par.Colorb.eval())
 
 			# Hook: PostReplace
 			self.registry.CallHook(family_name, '_PostReplace', new_comp, stub)
@@ -412,46 +450,41 @@ class StubManager:
 
 	def find_family_operators(self, family_name, network=None, max_depth=None):
 		"""
-		Find all operators of this family.
-
-		Args:
-			family_name: The family name
-			network: Optional network to search in. Defaults to root.
-			max_depth: Maximum search depth. None for unlimited.
+		Find all operators of this family via their FamManifest tags.
 
 		Returns:
-			list: Family operators (excluding installer and stubs)
+			list: Family operators (excluding installer, stubs, and operators_comp)
 		"""
 		installer = self.registry.GetFamilyExt(family_name)
 		if not installer:
 			return []
 
-		excluded_tags = self.registry.CallHook(family_name, '_GetExcludedTags') or set()
-
 		search_root = network or op('/')
-		depth = 1 if network else None
-		
-		return search_root.findChildren(
+		# No depth limit — manifests are children of placed ops
+		manifests = search_root.findChildren(
 			type=COMP,
-			maxDepth=depth,
-			key=lambda o: (
-				family_name in o.tags and
-				not any(tag in o.tags for tag in excluded_tags) and
-				f"{family_name}stub" not in str(o.tags) and
-				f"{family_name}stub" not in str(o.tags) and
-				o != installer.ownerComp and
-				installer.ownerComp.path not in o.path and
-				(not installer.operators_comp or installer.operators_comp.path not in o.path)
-			)
+			tags=[family_name, '<MANIFEST>'],
 		)
+
+		operators = []
+		for m in manifests:
+			parent_op = m.parent()
+			if not parent_op:
+				continue
+			if '<STUB>' in m.tags:
+				continue
+			if parent_op == installer.ownerComp:
+				continue
+			if installer.ownerComp.path in parent_op.path:
+				continue
+			if installer.operators_comp and installer.operators_comp.path in parent_op.path:
+				continue
+			operators.append(parent_op)
+		return operators
 
 	def find_stubs(self, family_name, network=None):
 		"""
-		Find all stubs of this family.
-
-		Args:
-			family_name: The family name
-			network: Optional network to search in. Defaults to root.
+		Find all stubs of this family via their FamManifest tags.
 
 		Returns:
 			list: Stub operators
@@ -460,23 +493,25 @@ class StubManager:
 		if not installer:
 			return []
 
+		search_root = network or op('/')
+		manifests = search_root.findChildren(
+			type=COMP,
+			tags=[family_name, '<MANIFEST>', '<STUB>'],
+		)
+
 		excluded_tags = self.registry._GetExcludedTags(family_name) or set()
 		excluded_lower = {t.lower() for t in excluded_tags}
 
-		search_root = network or op('/')
-		depth = 1 if network else None
-
-		all_stubs = search_root.findChildren(
-			type=COMP,
-			maxDepth=depth,
-			tags=['<STUB>']
-		)
-
-		# Filter by current family
-		all_stubs = [s for s in all_stubs if family_name in s.tags]
-
-		# Filter by op_type
-		return [s for s in all_stubs if s.fetch('op_type', '').lower() not in excluded_lower]
+		stubs = []
+		for m in manifests:
+			parent_op = m.parent()
+			if not parent_op:
+				continue
+			op_type = parent_op.fetch('op_type', '')
+			if op_type.lower() in excluded_lower:
+				continue
+			stubs.append(parent_op)
+		return stubs
 
 	def create_stubs_batch(self, family_name, operators):
 		"""

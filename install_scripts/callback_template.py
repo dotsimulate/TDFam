@@ -1,46 +1,105 @@
 # OpFam Callbacks Template
+#
+# All callbacks receive an info dict. Pre-action callbacks can:
+#   1. Return True/False/None to control flow
+#   2. Modify info dict keys to change what gets acted on
+#
+# Modified info keys are passed through to the caller, so changing
+# info['lookupName'] in onPlaceOp will place a different operator.
 
 def onPreInstall(info):
-    pass
+	pass
 
 def onPostInstall(info):
-    pass
+	pass
 
 def onPreUninstall(info):
-    pass
+	pass
 
 def onPostUninstall(info):
-    pass
+	pass
 
 def onPlaceOp(info):
-    return True
+	"""
+	Called before placing an operator from the TAB menu.
+
+	info keys:
+		lookupName (str) - operator name, MODIFIABLE to swap operator
+		panelValue (int) - click position
+
+	Return: True = place, False = cancel+close, None = ActionOp (keep menu)
+
+	Example - swap operator:
+		if some_condition:
+			info['lookupName'] = 'alternative_operator'
+		return True
+	"""
+	return True
 
 def onPostPlaceOp(info):
-    pass
+	"""
+	Called after operator placement.
+
+	info keys:
+		clone - the placed operator
+	"""
+	pass
 
 def onPreStub(info):
-    return True
+	"""
+	Called before stubbing an operator.
+
+	info keys:
+		comp - the operator to stub, MODIFIABLE
+
+	Return: True = proceed, False = skip this operator
+	"""
+	return True
 
 def onPostStub(info):
-    pass
+	pass
 
 def onPreReplace(info):
-    return True
+	"""
+	Called before replacing a stub with the real operator.
+
+	info keys:
+		stub - the stub to replace, MODIFIABLE
+
+	Return: True = proceed, False = skip this stub
+	"""
+	return True
 
 def onPostReplace(info):
-    pass
+	pass
 
 def onPreUpdate(info):
-    return True
+	"""
+	Called before updating an operator to a new version.
+
+	info keys:
+		oldComp - the existing operator
+		master - the new master to update from, MODIFIABLE
+
+	Return: True = proceed, False = skip this operator
+	"""
+	return True
 
 def onPostUpdate(info):
-    pass
+	pass
 
 def onPreserveSpecialParams(info):
-    pass
+	"""
+	Called during update/replace to preserve custom parameters.
+
+	info keys:
+		newComp - the new operator
+		source - the old operator or stub
+	"""
+	pass
 
 def onGetExcludedTags(info):
-    return set()
+	return set()
 
 def onGetCategoryTags(info):
-    return set()
+	return set()
