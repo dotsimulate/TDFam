@@ -157,24 +157,20 @@ def onValueChange(panelValue, prev):
     #   lookupName: possibly modified by callback
     #   'nohook' string if no hook method exists
 
-    # TODO X: do this after manageOpClone, or inside manageOpClone?
-    # result = op.FAMREGISTRY.CallHook(family, '_PlaceOp', panelValue, lookup_name)
+    lookup_name = display_name.lower().replace(' ', '_')
+    result = op.FAMREGISTRY.CallHook(family, '_PlaceOp', panelValue, lookup_name)
 
-    # if isinstance(result, dict):
-    #     should_place = result.get('returnValue', True)
-    #     lookup_name = result.get('lookupName', lookup_name)
-    #     normalized_name = lookup_name.replace(' ', '_')
-    # else:
-    #     should_place = result if result != 'nohook' else True
+    if isinstance(result, dict):
+        should_place = result.get('returnValue', True)
+    else:
+        should_place = result if result != 'nohook' else True
 
-    # if should_place is False:
-    #     parent.OPCREATE.par.winclose.pulse()
-    #     return
-    # if should_place is None:
-    #     # ActionOp - don't place, keep menu open
-    #     return
-
-
+    if should_place is False:
+        parent.OPCREATE.par.winclose.pulse()
+        return
+    if should_place is None:
+        # ActionOp - don't place, keep menu open
+        return
 
     # Manage op clone before placement
     # Validates registry, acts on op name, color
