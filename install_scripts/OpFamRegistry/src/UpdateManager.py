@@ -44,7 +44,7 @@ class UpdateManager:
 		# Try matching by manifest op_name
 		manifest = comp.op('FamManifest')
 		if manifest:
-			comp_type = self._get_op_name_from_manifest(manifest)
+			comp_type = self._get_op_type_from_manifest(manifest)
 			if comp_type:
 				source_type, source = self.registry.FileManager.get_operator_source(
 					family_name,
@@ -68,13 +68,13 @@ class UpdateManager:
 
 		return (None, None, 'none')
 
-	def _get_op_name_from_manifest(self, manifest):
+	def _get_op_type_from_manifest(self, manifest):
 		"""Read op_name from a FamManifest's OpInfo."""
 		import json
 		op_info_dat = manifest.op('OpInfo')
 		if op_info_dat:
 			try:
-				return json.loads(op_info_dat.text).get('op_name', '')
+				return json.loads(op_info_dat.text).get('op_type', '')
 			except:
 				pass
 		return ''
@@ -195,8 +195,8 @@ class UpdateManager:
 				if old_manifest:
 					new_manifest = new_comp.copy(old_manifest)
 			if new_manifest:
-				if family_name not in new_manifest.tags:
-					new_manifest.tags.add(family_name)
+				if f'<FAM:{family_name}>' not in new_manifest.tags:
+					new_manifest.tags.add(f'<FAM:{family_name}>')
 				if '<MANIFEST>' not in new_manifest.tags:
 					new_manifest.tags.add('<MANIFEST>')
 
@@ -294,7 +294,7 @@ class UpdateManager:
 
 		for comp in operators:
 			manifest = comp.op('FamManifest')
-			if manifest and self._get_op_name_from_manifest(manifest):
+			if manifest and self._get_op_type_from_manifest(manifest):
 				results['with_manifest'].append(comp)
 				results['updateable'].append(comp)
 			elif hasattr(comp.par, 'ext0object') and comp.par.ext0object.eval():

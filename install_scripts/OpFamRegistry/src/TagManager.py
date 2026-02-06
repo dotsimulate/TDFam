@@ -63,6 +63,7 @@ class TagManager:
 
 
 	def tag_operators(self, family_name, pattern='suffix'):
+		# TODO X: remove
 		"""
 		Convenience method to ensure both family and type tags on all operators.
 

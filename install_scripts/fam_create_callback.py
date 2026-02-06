@@ -151,7 +151,22 @@ def onCook(scriptOp):
         lictype = 'TouchDesigner Non-Commercial'
         score = '3'
         family = fam_name
-        opType = name + fam_name
+        
+        # Get manifest OpInfo if exists
+        op_info = None
+        
+        if isinstance(o, OP) and o.isCOMP and (_manifest := o.op('FamManifest')):
+            if _opInfo := _manifest.op('OpInfo'):
+                # load json to dict
+                import json
+                op_info = json.loads(_opInfo.text)
+                
+        if op_info:
+            label = op_info.get('op_label', label)
+            op_type = op_info.get('op_type', name.lower())
+
+        #opType = name.lower() + fam_name
+        opType = op_type + fam_name if op_info else name.lower() + fam_name
         scriptOp.appendRow([name, label, node_type, subtype, mininputs, maxinputs, ordering, level, lictype, os_compat, score, family, opType])
     
     return

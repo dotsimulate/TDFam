@@ -221,6 +221,7 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
             self.Properties['operators_comp'] = comp
 
     def onParTagoperators(self):
+        # TODO X: remove
         self._tag_operators()
 
     def onParCreatestubop(self):

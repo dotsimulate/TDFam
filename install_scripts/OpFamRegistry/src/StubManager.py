@@ -35,13 +35,13 @@ class StubManager:
 			return e
 		return None
 
-	def _get_op_name_from_manifest(self, manifest):
+	def _get_op_type_from_manifest(self, manifest):
 		"""Read op_name from a FamManifest's OpInfo."""
 		import json
 		op_info_dat = manifest.op('OpInfo')
 		if op_info_dat:
 			try:
-				return json.loads(op_info_dat.text).get('op_name', '')
+				return json.loads(op_info_dat.text).get('op_type', '')
 			except:
 				pass
 		return ''
@@ -78,7 +78,7 @@ class StubManager:
 		name = comp.name
 		manifest = comp.op('FamManifest')
 		if manifest:
-			op_type = self._get_op_name_from_manifest(manifest)
+			op_type = self._get_op_type_from_manifest(manifest)
 		else:
 			category_tags = self.registry._GetCategoryTags(family_name) or set()
 			op_type = self.registry.TagManager.get_operator_type(comp, family_name, category_tags)
@@ -291,7 +291,7 @@ class StubManager:
 			return None
 
 		# Get operator type from manifest
-		op_type = self._get_op_name_from_manifest(stub_manifest)
+		op_type = self._get_op_type_from_manifest(stub_manifest)
 		if not op_type:
 			op_type = stub.fetch('op_type', None)
 		if not op_type:
@@ -339,8 +339,8 @@ class StubManager:
 		if new_manifest:
 			if '<STUB>' in new_manifest.tags:
 				new_manifest.tags.remove('<STUB>')
-			if family_name not in new_manifest.tags:
-				new_manifest.tags.add(family_name)
+			if f'<FAM:{family_name}>' not in new_manifest.tags:
+				new_manifest.tags.add(f'<FAM:{family_name}>')
 			if '<MANIFEST>' not in new_manifest.tags:
 				new_manifest.tags.add('<MANIFEST>')
 		

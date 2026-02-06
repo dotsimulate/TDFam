@@ -150,95 +150,36 @@ def onValueChange(panelValue, prev):
     ###
 
     display_name = inject_script[target_index, 'name'].val
-    lookup_name = display_name.lower()
-    normalized_name = lookup_name.replace(' ', '_')
+    # normalized_name = display_name.lower().replace(' ', '_')
 
     # PlaceOp hook - returns dict with:
     #   returnValue: True = place, False = cancel+close, None = ActionOp
     #   lookupName: possibly modified by callback
     #   'nohook' string if no hook method exists
-    result = op.FAMREGISTRY.CallHook(family, '_PlaceOp', panelValue, lookup_name)
 
-    if isinstance(result, dict):
-        should_place = result.get('returnValue', True)
-        lookup_name = result.get('lookupName', lookup_name)
-        normalized_name = lookup_name.replace(' ', '_')
-    else:
-        should_place = result if result != 'nohook' else True
+    # TODO X: do this after manageOpClone, or inside manageOpClone?
+    # result = op.FAMREGISTRY.CallHook(family, '_PlaceOp', panelValue, lookup_name)
 
-    if should_place is False:
-        parent.OPCREATE.par.winclose.pulse()
-        return
-    if should_place is None:
-        # ActionOp - don't place, keep menu open
-        return
+    # if isinstance(result, dict):
+    #     should_place = result.get('returnValue', True)
+    #     lookup_name = result.get('lookupName', lookup_name)
+    #     normalized_name = lookup_name.replace(' ', '_')
+    # else:
+    #     should_place = result if result != 'nohook' else True
 
-    # Get operator source - supports both embedded and file-based loading
-    source_result = op.FAMREGISTRY.FileManager.get_operator_source(
-        family, lookup_name
-    )
-
-    clone = None
-    is_file_based = False
-
-    try:
-        prep_place = op.FAMREGISTRY.op('prep')
-    except:
-        debug("Error: 'prep' operator not found in FAMREGISTRY")
-        prep_place = None
-    if prep_place is None:
-        prep_place = installer.op('OpFamRegistry/prep')
+    # if should_place is False:
+    #     parent.OPCREATE.par.winclose.pulse()
+    #     return
+    # if should_place is None:
+    #     # ActionOp - don't place, keep menu open
+    #     return
 
 
-    tox_file_version = None
-    if source_result is None:
-        # Fallback to original embedded-only behavior
-        custom_ops = installer.par.Opcomp.eval() if hasattr(installer.par, 'Opcomp') else None
-        if not custom_ops:
-            print(f"Error: Operator '{lookup_name}' not found - no operators_comp and no file source")
-            return
-        masters = custom_ops.findChildren(name=lookup_name, maxDepth=1)
-        if not masters:
-            print(f"Error: Operator '{lookup_name}' not found in custom_operators")
-            return
-        master = masters[0]
-        clone = prep_place.copy(master, name=normalized_name+'1')
-
-    elif source_result[0] == 'file':
-        # Load from external .tox file
-        tox_path = source_result[1]
-        _, tox_file_version = op.FAMREGISTRY.FileManager._parse_tox_info(installer, tox_path)
-        try:
-            target_parent = ui.panes.current.owner
-            # loadTox loads .tox as child and returns the loaded op
-            clone = prep_place.loadTox(tox_path)
-            # Generate unique name to avoid conflicts
-            base_name = normalized_name
-            counter = 1
-            while target_parent.op(f"{base_name}{counter}"):
-                counter += 1
-            clone.name = f"{base_name}{counter}"
-        except Exception as e:
-            print(f"Error loading .tox file '{tox_path}': {e}")
-            clone = None
-            # Fallback to embedded if file load fails AND operators_comp exists
-            custom_ops_base = installer.par.Opcomp.eval() if hasattr(installer.par, 'Opcomp') else None
-            if custom_ops_base:
-                masters = custom_ops_base.findChildren(name=lookup_name, maxDepth=1)
-                if masters:
-                    clone = prep_place.copy(masters[0], name=normalized_name+'1')
-
-    elif source_result[0] == 'embedded':
-        # Use embedded operator (normal path)
-        master = source_result[1]
-        clone = prep_place.copy(master, name=normalized_name+'1')
-
-    if clone is None:
-        print(f"Error: Could not create operator '{lookup_name}'")
-        return
 
     # Manage op clone before placement
-    op.FAMREGISTRY.ext.OpFamRegistryExt.manageOpClone(family, clone, tox_file_version=tox_file_version, op_name=lookup_name)
+    # Validates registry, acts on op name, color
+    opType = inject_script[target_index, 'opType'].val
+    clone = op.FAMREGISTRY.ext.OpFamRegistryExt.manageOpClone(family, opType, display_name)
 
     # Place OP
     ui.panes.current.placeOPs([clone],inputIndex=0,outputIndex=0)		

@@ -1,9 +1,8 @@
 {
 	"op_version": "0.1.0",
-	"fam_version": "0.1.0"
+	"fam_version": "0.1.0",
 	"op_fam": "FAV",
 	"op_type": "something",
 	"op_name": "some_thing",
 	"op_label": "Some Thing"
-	
 }
