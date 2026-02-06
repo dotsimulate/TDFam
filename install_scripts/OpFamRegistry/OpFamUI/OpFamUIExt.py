@@ -1,7 +1,7 @@
 '''Info Header Start
 Name : OpFamUIExt
-Author : Dan@DAN-4090
-Saveorigin : opfam-create_dev.54.toe
+Author : DotSimulate@DOTOFFICE
+Saveorigin : opfam-create_dev.56.toe
 Saveversion : 2023.12370
 Info Header End'''
 
@@ -60,7 +60,9 @@ class OpFamUIExt:
 
 	def onFamilyTabSelected(self, fam_name):
 		if self.fam_registry:
-			self.parameters_ui.par.op = self.fam_registry.RegisteredFams.get(fam_name)
+			family_owner = self.fam_registry.RegisteredFams.get(fam_name)
+			ui_comp = family_owner.par.Famuicomp.eval() if family_owner and hasattr(family_owner.par, 'Famuicomp') else family_owner
+			self.parameters_ui.par.op = ui_comp
 			self.fam_menu.op('buttonSettings').par.value0 = False
 
 	def onButtonClicked(self, panelValue):
