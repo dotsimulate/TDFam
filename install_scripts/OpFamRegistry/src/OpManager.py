@@ -181,9 +181,9 @@ class OpManager:
 		type_tag = OpInfo.get('op_type', "MISSING") # TODO: have a fallback for this (based on probably display name which needs then to be passed here)
 
 		# remove any tag starting with <FAM: or <TYPE: cause we're gonna add the actual current one if it's not already there
-		for tag in manifest.tags:
-			if tag.startswith('<FAM:') or tag.startswith('<TYPE:'):
-				manifest.tags.remove(tag)
+		stale_tags = [tag for tag in manifest.tags if tag.startswith('<FAM:') or tag.startswith('<TYPE:')]
+		for tag in stale_tags:
+			manifest.tags.remove(tag)
 
 		if f'<FAM:{fam_name}>' not in manifest.tags:
 			manifest.tags.add(f'<FAM:{fam_name}>')
