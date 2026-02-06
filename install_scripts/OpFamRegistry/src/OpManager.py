@@ -147,6 +147,9 @@ class OpManager:
 
 		if not OpInfo.get('op_type', None):
 			OpInfo['op_type'] = display_name or _op.name
+
+		if not OpInfo.get('op_label', None):
+			OpInfo['op_label'] = display_name or _op.name
 		
 		# sanitize
 		OpInfo['op_name'] = self._sanitize_name(OpInfo['op_name'])
