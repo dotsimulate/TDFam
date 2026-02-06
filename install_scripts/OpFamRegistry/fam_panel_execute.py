@@ -234,13 +234,6 @@ def onValueChange(panelValue, prev):
 
     # Manage op clone before placement
     op.FAMREGISTRY.ext.OpFamRegistryExt.manageOpClone(_get_family(), clone, is_file_based, op_name=lookup_name)
-
-    pane = ui.panes.current.name
-    # Run opplace via tscript DAT to enable Enter key for placement confirmation
-    tscript_dat = op('/').create(textDAT, '__temp_opplace')
-    tscript_dat.text = f'opplace -p {pane} {clone.path}'
-    tscript_dat.par.language = 'tscript'
-    tscript_dat.run()
-    tscript_dat.destroy()
+    ui.panes.current.placeOPs([clone],inputIndex=0,outputIndex=0)				
     parent.OPCREATE.par.winclose.pulse()
     op.FAMREGISTRY.CallHook(_get_family(), '_PostPlaceOp', clone)

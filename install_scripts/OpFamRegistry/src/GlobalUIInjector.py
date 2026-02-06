@@ -210,8 +210,14 @@ class GlobalUIInjector:
 		for fam_name in self.owner.InstalledFams.keys():
 			mouse_checks.append(f"if child_manifest and '<MANIFEST>' in child_manifest.tags and '{fam_name}' in child_manifest.tags:\n\t\t\t\ttype = '{fam_name}'")
 
+		# Build per-family upstream checks for input source (manifest-based detection)
+		upstream_checks = []
+		for fam_name in self.owner.InstalledFams.keys():
+			upstream_checks.append(f"if upstream_manifest and '<MANIFEST>' in upstream_manifest.tags and '{fam_name}' in upstream_manifest.tags:\n\t\t\t\t\ttype = '{fam_name}'")
+
 		fam_check_str = "\n\tel".join(fam_checks)
 		mouse_check_str = "\n\t\t\tel".join(mouse_checks)
+		upstream_check_str = "\n\t\t\t\tel".join(upstream_checks)
 
 		script = f'''varTable = op('local/set_variables')
 lastnode = op(varTable['nodepath',1])
@@ -224,7 +230,8 @@ if(lastnode and source == 'output'):
 	manifest = parent_comp.op('FamManifest') if parent_comp else None
 	{fam_check_str}
 	varTable['lasttype',1] = type
-elif(source == 'input' and ({compatible_check})):
+elif source == 'input':
+	# Find op at cursor, check its upstream for custom family manifest
 	pane = ui.panes.current
 	zoom = pane.zoom
 	currentParent = pane.owner
@@ -232,13 +239,30 @@ elif(source == 'input' and ({compatible_check})):
 	type = menu_type
 	for child in currentParent.findChildren(maxDepth=1):
 		if (-5<(mousePos[0]-child.nodeX)*zoom<15 and child.nodeY+child.nodeHeight>mousePos[1] and mousePos[1]>child.nodeY):
-			child_manifest = child.op('FamManifest')
-			{mouse_check_str}
+			if child.inputs:
+				upstream = child.inputs[0]
+				upstream_parent = upstream.parent() if upstream else None
+				upstream_manifest = upstream_parent.op('FamManifest') if upstream_parent else None
+				{upstream_check_str}
 			if type != menu_type:
 				varTable['lastnode',1] = child.name
 				varTable['nodepath',1] = child.path
-				break
-	varTable['lasttype',1] = type'''
+			break
+	varTable['lasttype',1] = type
+elif source == 'doubleclick':
+	pane = ui.panes.current
+	zoom = pane.zoom
+	currentParent = pane.owner
+	mousePos = [varTable['xpos',1],varTable['ypos',1]]
+	for child in currentParent.findChildren(maxDepth=1):
+		if (-5<(mousePos[0]-child.nodeX)*zoom<15 and child.nodeY+child.nodeHeight>mousePos[1] and mousePos[1]>child.nodeY):
+			varTable['lastnode',1] = child.name
+			varTable['nodepath',1] = child.path
+			type = child.family
+			child_manifest = child.op('FamManifest')
+			{mouse_check_str}
+			varTable['lasttype',1] = type
+			break'''
 
 		setLastNodeType.text = script
 
