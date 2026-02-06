@@ -199,7 +199,7 @@ class GlobalUIInjector:
 		fam_checks = []
 		all_compatible_types = set()
 		for fam_name, fam_owner in self.owner.InstalledFams.items():
-			fam_checks.append(f"if manifest and '<MANIFEST>' in manifest.tags and '{fam_name}' in manifest.tags:\n\t\ttype = '{fam_name}'")
+			fam_checks.append(f"if manifest and '<MANIFEST>' in manifest.tags and '<FAM:{fam_name}>' in manifest.tags:\n\t\ttype = '{fam_name}'")
 			for t in fam_owner.Properties.get('compatible_types', []):
 				all_compatible_types.add(t)
 
@@ -208,7 +208,7 @@ class GlobalUIInjector:
 		# Build per-family mouse pos checks (manifest-based detection)
 		mouse_checks = []
 		for fam_name in self.owner.InstalledFams.keys():
-			mouse_checks.append(f"if child_manifest and '<MANIFEST>' in child_manifest.tags and '{fam_name}' in child_manifest.tags:\n\t\t\t\ttype = '{fam_name}'")
+			mouse_checks.append(f"if child_manifest and '<MANIFEST>' in child_manifest.tags and '<FAM:{fam_name}>' in child_manifest.tags:\n\t\t\t\ttype = '{fam_name}'")
 
 		fam_check_str = "\n\tel".join(fam_checks)
 		mouse_check_str = "\n\t\t\tel".join(mouse_checks)
@@ -525,13 +525,12 @@ elif(source == 'input' and ({compatible_check})):
 				except:
 					pass
 
-		# Look for all operators in the network with the tag of family name and update the color
-		# TODO is this too strict? for backwards compatiblity just look for family names? 
-		# 	   what if there's a conflict with an optype of another fam and a fam name?
+		# Find all placed operators via their manifest tags and update color
 		family_name = family_owner.Properties.get('family_name')
-		for _op in root.findChildren(type=COMP,tags=['<FAM>']):
-			if family_name in _op.tags:
-				_op.color = rgb_color
+		for manifest in root.findChildren(type=COMP, tags=[f'<FAM:{family_name}>', '<MANIFEST>'], allTags=True):
+			parent_op = manifest.parent()
+			if parent_op:
+				parent_op.color = rgb_color
 
 
 	def update_family_name(self, old_name, new_name):

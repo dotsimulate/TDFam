@@ -275,7 +275,7 @@ class StubManager:
 			return None
 
 		stub_manifest = stub.op('FamManifest')
-		if not stub_manifest or family_name not in stub_manifest.tags:
+		if not stub_manifest or f'<FAM:{family_name}>' not in stub_manifest.tags:
 			print(f"replaceStub: No valid manifest on {stub.path}")
 			return None
 
@@ -463,7 +463,7 @@ class StubManager:
 		# No depth limit — manifests are children of placed ops
 		manifests = search_root.findChildren(
 			type=COMP,
-			tags=[family_name, '<MANIFEST>'],
+			tags=[f'<FAM:{family_name}>', '<MANIFEST>'],
 			allTags=True,
 		)
 
@@ -497,7 +497,7 @@ class StubManager:
 		search_root = network or op('/')
 		manifests = search_root.findChildren(
 			type=COMP,
-			tags=[family_name, '<MANIFEST>', '<STUB>'],
+			tags=[f'<FAM:{family_name}>', '<MANIFEST>', '<STUB>'],
 			allTags=True,
 		)
 

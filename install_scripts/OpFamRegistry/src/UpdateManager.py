@@ -251,7 +251,7 @@ class UpdateManager:
 		search_root = network or op('/')
 		manifests = search_root.findChildren(
 			type=COMP,
-			tags=[family_name, '<MANIFEST>'],
+			tags=[f'<FAM:{family_name}>', '<MANIFEST>'],
 		)
 
 		operators = []

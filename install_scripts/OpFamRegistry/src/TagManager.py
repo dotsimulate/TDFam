@@ -118,6 +118,11 @@ class TagManager:
 		Returns:
 			bool: True if has type tag, False otherwise
 		"""
+		# Check for new <TYPE:...> tag format on manifest
+		manifest = comp.op('FamManifest')
+		if manifest:
+			return any(tag.startswith('<TYPE:') for tag in manifest.tags)
+		# Legacy fallback
 		if category_tags:
 			return any(tag not in category_tags for tag in comp.tags)
 		else:
