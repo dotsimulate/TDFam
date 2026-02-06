@@ -58,12 +58,10 @@ def onCook(scriptOp):
     replace_index = replace_index_data
 
     # Get embedded operators from Opcomp parameter
-    custom_operators_base = None
-    if hasattr(installer_comp.par, 'Opcomp'):
-        custom_operators_base = installer_comp.par.Opcomp.eval()
+    custom_operators_base = installer_comp.par.Opcomp.eval()
 
     if custom_operators_base:
-        embedded_ops = custom_operators_base.findChildren(tags=[fam_name], maxDepth=1)
+        embedded_ops = custom_operators_base.findChildren(maxDepth=1)
         embedded_names = {o.name.lower() for o in embedded_ops}
     else:
         embedded_ops = []

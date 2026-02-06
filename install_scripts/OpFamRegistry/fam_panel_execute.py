@@ -13,9 +13,10 @@ def _get_family():
 	current_op = op('/ui/dialogs/menu_op/current')
 	return current_op[0,0].val if current_op else ''
 
-def _get_installer():
+def _get_installer(family=None):
 	"""Get the installer component for this family via the Registry."""
-	family = _get_family()
+	if not family:
+		family = _get_family()
 	registry = getattr(op, 'FAMREGISTRY', None)
 	if registry and family in registry.InstalledFams:
 		return registry.InstalledFams[family]
@@ -34,11 +35,11 @@ def whileOff(panelValue):
 	return
 
 def onValueChange(panelValue, prev):
-    installer = _get_installer()
+    family = _get_family()
+    installer = _get_installer(family)
     if not installer:
         return
 
-    license = installer.op('License')
     if panelValue == -1:
         return
 
@@ -145,6 +146,9 @@ def onValueChange(panelValue, prev):
 
     if not inject_script[target_index, 'name'].val:
         return
+
+    ###
+
     display_name = inject_script[target_index, 'name'].val
     lookup_name = display_name.lower()
     normalized_name = lookup_name.replace(' ', '_')
@@ -153,7 +157,7 @@ def onValueChange(panelValue, prev):
     #   returnValue: True = place, False = cancel+close, None = ActionOp
     #   lookupName: possibly modified by callback
     #   'nohook' string if no hook method exists
-    result = op.FAMREGISTRY.CallHook(_get_family(), '_PlaceOp', panelValue, lookup_name)
+    result = op.FAMREGISTRY.CallHook(family, '_PlaceOp', panelValue, lookup_name)
 
     if isinstance(result, dict):
         should_place = result.get('returnValue', True)
@@ -171,7 +175,7 @@ def onValueChange(panelValue, prev):
 
     # Get operator source - supports both embedded and file-based loading
     source_result = op.FAMREGISTRY.FileManager.get_operator_source(
-        _get_family(), lookup_name
+        family, lookup_name
     )
 
     clone = None
@@ -185,6 +189,8 @@ def onValueChange(panelValue, prev):
     if prep_place is None:
         prep_place = installer.op('OpFamRegistry/prep')
 
+
+    tox_file_version = None
     if source_result is None:
         # Fallback to original embedded-only behavior
         custom_ops = installer.par.Opcomp.eval() if hasattr(installer.par, 'Opcomp') else None
@@ -201,11 +207,11 @@ def onValueChange(panelValue, prev):
     elif source_result[0] == 'file':
         # Load from external .tox file
         tox_path = source_result[1]
-        is_file_based = True
+        _, tox_file_version = op.FAMREGISTRY.FileManager._parse_tox_info(installer, tox_path)
         try:
             target_parent = ui.panes.current.owner
             # loadTox loads .tox as child and returns the loaded op
-            clone = target_parent.loadTox(tox_path)
+            clone = prep_place.loadTox(tox_path)
             # Generate unique name to avoid conflicts
             base_name = normalized_name
             counter = 1
@@ -221,7 +227,6 @@ def onValueChange(panelValue, prev):
                 masters = custom_ops_base.findChildren(name=lookup_name, maxDepth=1)
                 if masters:
                     clone = prep_place.copy(masters[0], name=normalized_name+'1')
-                    is_file_based = False
 
     elif source_result[0] == 'embedded':
         # Use embedded operator (normal path)
@@ -233,14 +238,10 @@ def onValueChange(panelValue, prev):
         return
 
     # Manage op clone before placement
-    op.FAMREGISTRY.ext.OpFamRegistryExt.manageOpClone(_get_family(), clone, is_file_based, op_name=lookup_name)
+    op.FAMREGISTRY.ext.OpFamRegistryExt.manageOpClone(family, clone, tox_file_version=tox_file_version, op_name=lookup_name)
 
-    pane = ui.panes.current.name
-    # Run opplace via tscript DAT to enable Enter key for placement confirmation
-    tscript_dat = op('/').create(textDAT, '__temp_opplace')
-    tscript_dat.text = f'opplace -p {pane} {clone.path}'
-    tscript_dat.par.language = 'tscript'
-    tscript_dat.run()
-    tscript_dat.destroy()
+    # Place OP
+    ui.panes.current.placeOPs([clone],inputIndex=0,outputIndex=0)		
+
     parent.OPCREATE.par.winclose.pulse()
-    op.FAMREGISTRY.CallHook(_get_family(), '_PostPlaceOp', clone)
+    op.FAMREGISTRY.CallHook(family, '_PostPlaceOp', clone)
