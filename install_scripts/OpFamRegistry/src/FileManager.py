@@ -140,27 +140,29 @@ class FileManager:
 
 		# Find embedded operator from operators_comp
 		custom_ops = installer.operators_comp
-		# first we hope for a fast tag lookup
-		manifested_ops = custom_ops.findChildren(tags=["<MANIFEST>", f'<FAM:{family_name}>', f'<TYPE:{lookup_name}>'], maxDepth=1)
-		manifested = manifested_ops[0] if manifested_ops else None
-		if not manifested:
-			# need to look into manifests actually
-			for _manifest in custom_ops.findChildren(tags=["<MANIFEST>"], maxDepth=2):
-				if _opInfo := _manifest.op('OpInfo'):
-					# load json to dict
-					import json
-					_opInfo_dict = json.loads(_opInfo.text)
-					if _opType := _opInfo_dict.get('op_type'):
-						# remove family name from op_type
-						_opType = _opType.replace(family_name, '')
-						if _opType == lookup_name:
-							manifested = _manifest.parent()
-							break
-		if not manifested:					
-			embedded_ops = custom_ops.findChildren(name=lookup_name, maxDepth=1) if custom_ops else []
-			embedded = embedded_ops[0] if embedded_ops else None
-		else:
-			embedded = manifested
+		embedded = None
+		if custom_ops:
+			# first we hope for a fast tag lookup
+			manifested_ops = custom_ops.findChildren(tags=["<MANIFEST>", f'<FAM:{family_name}>', f'<TYPE:{lookup_name}>'], maxDepth=1)
+			manifested = manifested_ops[0] if manifested_ops else None
+			if not manifested:
+				# need to look into manifests actually
+				for _manifest in custom_ops.findChildren(tags=["<MANIFEST>"], maxDepth=2):
+					if _opInfo := _manifest.op('OpInfo'):
+						# load json to dict
+						import json
+						_opInfo_dict = json.loads(_opInfo.text)
+						if _opType := _opInfo_dict.get('op_type'):
+							# remove family name from op_type
+							_opType = _opType.replace(family_name, '')
+							if _opType == lookup_name:
+								manifested = _manifest.parent()
+								break
+			if not manifested:
+				embedded_ops = custom_ops.findChildren(name=lookup_name, maxDepth=1)
+				embedded = embedded_ops[0] if embedded_ops else None
+			else:
+				embedded = manifested
 
 		# Find external .tox
 		external_info = None

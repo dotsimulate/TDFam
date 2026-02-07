@@ -137,19 +137,25 @@ def cook(scriptOp):
             show_ungrouped = settings['show_ungrouped', 1].val if settings and settings.row('show_ungrouped') else '1'
             ungrouped_label = settings['ungrouped_label', 1].val if settings and settings.row('ungrouped_label') else 'Other'
 
-            # Create group index
+            # Build group_index from defLabel rows in familyOps
+            # fam_create_callback already computed groups (including folder categories)
             group_index = {}
-            if group_table:
-                for col in range(group_table.numCols):
-                    group_name = group_table[0, col].val
-                    for row in range(1, group_table.numRows):
-                        operator_name = group_table[row, col].val
-                        if operator_name:
-                            normalized_name = operator_name.lower().replace(' ', '_')
-                            group_index[operator_name.lower()] = group_name
-                            group_index[normalized_name] = group_name
+            group_order = []
+            current_group = ''
+            for i in range(1, familyOps.numRows):
+                name_val = familyOps[i, 'name'].val
+                type_val = familyOps[i, 'type'].val
+                if not name_val and type_val.endswith('defLabel'):
+                    current_group = familyOps[i, 'label'].val
+                    if current_group and current_group not in group_order:
+                        group_order.append(current_group)
+                    continue
+                if name_val:
+                    group_index[name_val.lower()] = current_group
+                    normalized = name_val.lower().replace(' ', '_')
+                    group_index[normalized] = current_group
 
-            has_groups = len(group_index) > 0
+            has_groups = any(g for g in group_index.values() if g)
 
             # Group nodes by their group
             grouped_nodes = {}
@@ -171,7 +177,7 @@ def cook(scriptOp):
 
                 if has_groups:
                     group_name = group_index.get(type.lower()) or group_index.get(normalized_type)
-                    if group_name is None:
+                    if not group_name:
                         if show_ungrouped != '1':
                             continue
                         group_name = ungrouped_label
@@ -246,10 +252,9 @@ def cook(scriptOp):
                         if group_name not in grouped_nodes:
                             grouped_nodes[group_name] = []
                         grouped_nodes[group_name].append(node)
-            group_order = []
+            # group_order already built from defLabel rows above
             custom_order = {}
             if group_table:
-                group_order = [group_table[0, col].val for col in range(group_table.numCols)]
                 for col in range(group_table.numCols):
                     grp = group_table[0, col].val
                     custom_order[grp] = {}
