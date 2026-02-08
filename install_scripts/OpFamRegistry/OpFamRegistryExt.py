@@ -6,6 +6,7 @@ from StubManager import StubManager
 from UpdateManager import UpdateManager
 from FileManager import FileManager
 from OpManager import OpManager
+from ShortcutManager import ShortcutManager
 
 class OpFamRegistryExt:
 	def __init__(self, ownerComp):
@@ -21,6 +22,7 @@ class OpFamRegistryExt:
 		self.UpdateManager = UpdateManager(self.ownerComp, self)
 		self.FileManager = FileManager(self.ownerComp, self)
 		self.OpManager = OpManager(self.ownerComp, self)
+		self.ShortcutManager = ShortcutManager(self.ownerComp, self)
 
 		self._dev_overwrite_mode = False
 		
@@ -41,6 +43,9 @@ class OpFamRegistryExt:
 				self.RegisterFamily(restored_registered[_reg_fam])
 			for _inst_fam in restored_installed:
 				self.InstallFamily(restored_installed[_inst_fam])
+
+			# self.ShortcutManager.rebuildShortcutDict() # TODO: we could retain registered shortcuts too!
+			self.ShortcutManager.enableShortcutDat()
 		else:
 			# Check if we're post-update
 			is_post_update = self.ownerComp.fetch('post_update', False)
@@ -370,6 +375,7 @@ class OpFamRegistryExt:
 			self._deleteItemFromFamilyDict(self.InstalledFams, fam_name)
 			debug(f'Uninstalled family: {fam_name}')
 			self.global_ui_injector.uninstall(fam_name)
+			self.ShortcutManager.unregisterOpShortcutsForFamily(fam_name)
 			self.EventEmitter.Emit('FamilyUninstalled', fam_name)
 			
 			self._PostUninstall(fam_name)

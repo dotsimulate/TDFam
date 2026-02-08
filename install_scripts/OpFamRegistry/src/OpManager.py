@@ -73,24 +73,26 @@ class OpManager:
 		opType = opType.replace(family_name, '')
 
 		# Get operator source - supports both embedded and file-based loading
-		source_info = op.FAMREGISTRY.FileManager.get_operator_source(
+		source_info = self.registry.FileManager.get_operator_source(
 			family_name, opType
 		)
 
+
+
 		clone = self._createClone(family_owner, display_name, source_info)
 		if not clone:
+			debug(f'Failed to create clone {opType} for {family_owner}')
 			return
-
 		is_file_based = source_info is not None and source_info[0] == 'file'
 		if is_file_based:
-			_, tox_file_version = op.FAMREGISTRY.FileManager._parse_tox_info(family_owner, source_info[1])
+			_, tox_file_version = self.registry.FileManager._parse_tox_info(family_owner, source_info[1])
 		else:
 			tox_file_version = None
 
 		# Validate manifest (check, or create if necessary)
 		OpInfo, ParRetain, Shortcuts = self._validate_manifest(family_owner, clone, tox_file_version=tox_file_version, display_name=display_name)
 		self._handle_OpInfo(family_owner, clone, OpInfo=OpInfo)
-		self._handle_Shortcuts(family_owner, clone, Shortcuts=Shortcuts)
+		self._handle_Shortcuts(family_owner, clone, OpInfo, Shortcuts)
 		self._tag_manifest(family_owner, clone, OpInfo)
 
 		self._handle_license(family_owner, clone)
@@ -161,10 +163,11 @@ class OpManager:
 	def _validate_Shortcuts(self, family_owner, _op, manifest):
 		_Shortcuts = manifest.op('Shortcuts')
 		# Create Shortcuts if it doesn't exist
-		if not _Shortcuts:
+		if _Shortcuts is None:
 			_Shortcuts = manifest.create(textDAT, 'Shortcuts')
 			_Shortcuts.text = {}
-		return json.loads(_Shortcuts.text)
+		_dict = json.loads(_Shortcuts.text)
+		return _dict
 
 	def _validate_ParRetain(self, family_owner, _op, manifest):
 		_ParRetain = manifest.op('ParRetain')
@@ -181,7 +184,7 @@ class OpManager:
 
 		#fam_name = OpInfo.get('op_fam', family_owner.Properties['family_name'])
 		fam_name = family_owner.Properties['family_name'] # NOTE: we ignore op_fam manifest value for now
-		type_tag = OpInfo.get('op_type', "MISSING") # TODO: have a fallback for this (based on probably display name which needs then to be passed here)
+		op_type = OpInfo.get('op_type', "MISSING") # TODO: have a fallback for this (based on probably display name which needs then to be passed here)
 
 		# remove any tag starting with <FAM: or <TYPE: cause we're gonna add the actual current one if it's not already there
 		stale_tags = [tag for tag in manifest.tags if tag.startswith('<FAM:') or tag.startswith('<TYPE:')]
@@ -190,8 +193,8 @@ class OpManager:
 
 		if f'<FAM:{fam_name}>' not in manifest.tags:
 			manifest.tags.add(f'<FAM:{fam_name}>')
-		if f'<TYPE:{type_tag}>' not in manifest.tags:
-			manifest.tags.add(f'<TYPE:{type_tag}>')
+		if f'<TYPE:{op_type}>' not in manifest.tags:
+			manifest.tags.add(f'<TYPE:{op_type}>')
 		if '<MANIFEST>' not in manifest.tags:
 			manifest.tags.add('<MANIFEST>')
 
@@ -211,10 +214,19 @@ class OpManager:
 				tries += 1
 		return
 
-	def _handle_Shortcuts(self, family_owner, _op, Shortcuts = None):
+	def _handle_Shortcuts(self, family_owner, _op, OpInfo, Shortcuts):
 		if not Shortcuts:
 			Shortcuts = json.loads(_op.op('FamManifest').op('Shortcuts').text)
-		# do stuff with Shortcuts
+		
+		fam_name = OpInfo.get('op_fam')
+		op_type = OpInfo.get('op_type')
+		
+		debug(f'about to register {Shortcuts} for {_op}')
+
+		for _shortcut, _parName in Shortcuts.items():
+			debug(f'attempting to register shortcut {_shortcut} for {_op}')
+			self.registry.ShortcutManager.registerOpShortcut(fam_name, op_type, _shortcut, _parName)
+
 		return
 
 	def _handle_license(self, family_owner, _op):

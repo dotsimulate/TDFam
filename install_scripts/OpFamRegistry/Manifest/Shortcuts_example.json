@@ -1,4 +1,5 @@
 {
-	"ctrl.shift.b": "Bypass",
-	"ctrl.shift.r": "Render"
+	"ctrl.shift.r": "Render",
+	"ctrl.shift.b": "Bypass"
+
 }
