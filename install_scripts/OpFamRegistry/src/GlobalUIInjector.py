@@ -459,6 +459,8 @@ elif(source == 'input' and ({compatible_check})):
 				row_entry.append(connection_map[connection_key])
 			elif col_type in compatible_types:
 				row_entry.append('x')
+			elif col_type == 'COMP':
+				row_entry.append('x')
 			else:
 				row_entry.append('')
 
