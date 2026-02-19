@@ -5,6 +5,7 @@ Handles creating lightweight stubs from operators and replacing them
 back with full operators. Used for performance optimization.
 """
 import re
+from RegistryHelpers import get_op_type_from_manifest
 
 class StubManager:
 	"""
@@ -34,17 +35,6 @@ class StubManager:
 		for e in s:
 			return e
 		return None
-
-	def _get_op_type_from_manifest(self, manifest):
-		"""Read op_name from a FamManifest's OpInfo."""
-		import json
-		op_info_dat = manifest.op('OpInfo')
-		if op_info_dat:
-			try:
-				return json.loads(op_info_dat.text).get('op_type', '')
-			except:
-				pass
-		return ''
 
 	def create_stub(self, family_name, comp):
 		"""
@@ -78,7 +68,7 @@ class StubManager:
 		name = comp.name
 		manifest = comp.op('FamManifest')
 		if manifest:
-			op_type = self._get_op_type_from_manifest(manifest)
+			op_type = get_op_type_from_manifest(manifest)
 		else:
 			category_tags = self.registry._GetCategoryTags(family_name) or set()
 			op_type = self.registry.TagManager.get_operator_type(comp, family_name, category_tags)
@@ -291,7 +281,7 @@ class StubManager:
 			return None
 
 		# Get operator type from manifest
-		op_type = self._get_op_type_from_manifest(stub_manifest)
+		op_type = get_op_type_from_manifest(stub_manifest)
 		if not op_type:
 			op_type = stub.fetch('op_type', None)
 		if not op_type:

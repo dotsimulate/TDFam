@@ -1,9 +1,5 @@
-"""
-Tag management helpers for opfam-create.
-
-Provides utilities for ensuring operators in custom_operators have proper tags
-for the stub/update/placement systems to work correctly.
-"""
+import re
+from RegistryHelpers import sanitize_name
 
 class TagManager:
 	def __init__(self, ownerComp, registry):
@@ -77,38 +73,7 @@ class TagManager:
 
 	def get_operator_type(self, comp, family_name, category_tags=None):
 		"""
-		Extract operator type from a component's tags.
-
-		Supports two patterns:
-		1. {type}{familyName} pattern (e.g., "agentLOP" -> "agent")
-		2. Category tag exclusion (find tag that's not a category)
-
-		Args:
-			comp: The component to get type for
-			family_name: The family name to strip from suffix
-			category_tags: Optional set of category tags to exclude
-
-		Returns:
-			str: The operator type, or comp.name as fallback
-		"""
-		if category_tags:
-			# Find tag that is NOT a category tag
-			for tag in comp.tags:
-				if tag not in category_tags:
-					return tag.lower().replace(' ', '_')
-		else:
-			# look for {type}{familyName} pattern
-			for tag in comp.tags:
-				if tag.endswith(family_name) and tag != family_name:
-					return tag.removesuffix(family_name)
-
-		# Fallback to component name
-		return comp.name
-
-
-	def has_operator_type_tag(self, comp, family_name, category_tags=None):
-		"""
-		Check if a component has a proper operator type tag.
+		Check if a component has a proper operator type tag and return it.
 
 		Args:
 			comp: The component to check
@@ -116,17 +81,30 @@ class TagManager:
 			category_tags: Optional set of category tags
 
 		Returns:
-			bool: True if has type tag, False otherwise
+			str: The operator type string if found, None otherwise
 		"""
+		type_regex = re.compile(r'<TYPE:(.*)>')
+
 		# Check for new <TYPE:...> tag format on manifest
 		manifest = comp.op('FamManifest')
 		if manifest:
-			return any(tag.startswith('<TYPE:') for tag in manifest.tags)
-		# Legacy fallback
+			for tag in manifest.tags:
+				if match := type_regex.match(tag):
+					return match.group(1)
+			
+		# Check for tags on the component itself (e.g. for non-COMP or file-based overrides)
+		if f'<FAM:{family_name}>' in comp.tags:
+			for tag in comp.tags:
+				if match := type_regex.match(tag):
+					return match.group(1)
+
 		if category_tags:
-			return any(tag not in category_tags for tag in comp.tags)
+			for tag in comp.tags:
+				if tag not in category_tags:
+					return tag
 		else:
-			return any(
-				tag.endswith(family_name) and tag != family_name
-				for tag in comp.tags
-			)
+			for tag in comp.tags:
+				if tag.endswith(family_name) and tag != family_name:
+					return tag.removesuffix(family_name)
+		
+		return sanitize_name(comp.name)

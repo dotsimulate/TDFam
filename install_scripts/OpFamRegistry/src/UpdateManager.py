@@ -4,6 +4,7 @@ Update system for opfam-create.
 Handles updating operators to newer versions while preserving
 connections and parameter values.
 """
+from RegistryHelpers import get_op_type_from_manifest
 
 class UpdateManager:
 	"""
@@ -44,40 +45,25 @@ class UpdateManager:
 		# Try matching by manifest op_name
 		manifest = comp.op('FamManifest')
 		if manifest:
-			comp_type = self._get_op_type_from_manifest(manifest)
-			if comp_type:
-				source_type, source = self.registry.FileManager.get_operator_source(
-					family_name,
-					comp_type,
-					getattr(installer, 'operators_folder', None),
-					getattr(installer, 'dynamic_refresh', False)
-				) or (None, None)
+			comp_type = get_op_type_from_manifest(manifest)
+			info_type = 'manifest'
+		else:
+			category_tags = self.registry._GetCategoryTags(family_name) or set()
+			comp_type = self.registry.TagManager.get_operator_type(comp, family_name, category_tags)
+			info_type = 'tags'
+			
+		if comp_type:
+			source_type, source = self.registry.FileManager.get_operator_source(
+				family_name,
+				comp_type,
+				getattr(installer, 'operators_folder', None),
+				getattr(installer, 'dynamic_refresh', False)
+			) or (None, None)
+			if source:
+				return (source_type, source, info_type)
 
-				if source:
-					return (source_type, source, 'manifest')
-
-		# Legacy fallback: ext0object
-		operators_folder = installer.operators_comp
-		if operators_folder and hasattr(comp.par, 'ext0object'):
-			ext_obj = comp.par.ext0object.eval()
-			if ext_obj:
-				for master_op in operators_folder.findChildren(type=COMP, maxDepth=1):
-					if hasattr(master_op.par, 'ext0object'):
-						if master_op.par.ext0object.eval() == ext_obj:
-							return ('embedded', master_op, 'ext0object')
 
 		return (None, None, 'none')
-
-	def _get_op_type_from_manifest(self, manifest):
-		"""Read op_name from a FamManifest's OpInfo."""
-		import json
-		op_info_dat = manifest.op('OpInfo')
-		if op_info_dat:
-			try:
-				return json.loads(op_info_dat.text).get('op_type', '')
-			except:
-				pass
-		return ''
 
 	def _copy_par(self, dest_par, source_par):
 		"""Copy parameter value/mode from source to destination."""
@@ -294,14 +280,16 @@ class UpdateManager:
 
 		for comp in operators:
 			manifest = comp.op('FamManifest')
-			if manifest and self._get_op_type_from_manifest(manifest):
+			if manifest and get_op_type_from_manifest(manifest):
 				results['with_manifest'].append(comp)
 				results['updateable'].append(comp)
-			elif hasattr(comp.par, 'ext0object') and comp.par.ext0object.eval():
-				results['with_ext_object'].append(comp)
-				results['updateable'].append(comp)
 			else:
-				source_type, _, _ = self.find_matching_master(family_name, comp)
+				# source_type: from file or comp
+				# info_type: from manifest or tag
+				source_type, _, info_type = self.find_matching_master(family_name, comp)
+				if info_type == 'manifest':
+					restults['with_manifest'].append(comp)
+
 				if source_type:
 					results['updateable'].append(comp)
 				else:

@@ -2,6 +2,7 @@
 # scriptOp - the OP which is cooking
 # FAM CREATE CALLBACK
 # Builds the operator family menu from Config DependDict and Properties
+import re
 
 def onSetupParameters(scriptOp):
     return
@@ -30,7 +31,6 @@ def onCook(scriptOp):
     group_mapping = config.get('group_mapping', {})
     replace_index_data = config.get('replace_index', {})
     os_incompatible = config.get('os_incompatible', {})
-    relabel_index_data = config.get('relabel_index', {})
     settings_data = config.get('settings', {})
 
     # Build group_index: operator_name -> group_name
@@ -47,12 +47,6 @@ def onCook(scriptOp):
         normalized = op_name.lower().replace(' ', '_')
         os_values[normalized] = str(os_data.get('windows', 1))
         exclude_values[normalized] = str(os_data.get('exclude', 0))
-
-    # Build label_index from relabel_index (index -> label)
-    label_index = {}
-    for idx_str, label in relabel_index_data.items():
-        if idx_str.isdigit():
-            label_index[int(idx_str)] = label
 
     # replace_index is already in correct format (find -> replace)
     replace_index = replace_index_data
@@ -135,12 +129,18 @@ def onCook(scriptOp):
         normalized_name = name.lower().replace(' ', '_')
         os_compat = os_values.get(normalized_name, '1')
 
-        if i in label_index:
-            label = label_index[i]
-        else:
-            label = ' '.join(word.capitalize() for word in name.split('_'))
-            for old, new in replace_index.items():
-                label = label.replace(old, new)
+
+        label = ' '.join(word.capitalize() for word in name.split('_'))
+
+        all_families = list(families.keys())
+        if hasattr(op, 'FAMREGISTRY'):
+            all_families.extend(op.FAMREGISTRY.InstalledFams.keys())
+
+        if all_families:
+            # Escape names and use boundaries that handle non-word characters
+            escaped = all_families
+            regex = r'(?<!\w)(' + '|'.join(escaped) + r')(?!\w)'
+            label = re.sub(regex, lambda m: m.group(1).upper(), label, flags=re.IGNORECASE)
         
         node_type = types[o in generators]
         subtype = '2'
@@ -164,6 +164,9 @@ def onCook(scriptOp):
         if op_info:
             label = op_info.get('op_label', label)
             op_type = op_info.get('op_type', name.lower())
+
+        for old, new in replace_index.items():
+            label = label.replace(old, new)
 
         #opType = name.lower() + fam_name
         opType = op_type + fam_name if op_info else name.lower() + fam_name

@@ -34,3 +34,21 @@ def get_params_to_retain(op_path, current_scenario, retention_data):
 		params_to_keep.extend(rules)
 		
 	return params_to_keep
+
+def get_op_type_from_manifest(manifest):
+	"""Read op_name from a FamManifest's OpInfo."""
+	import json
+	op_info_dat = manifest.op('OpInfo')
+	if op_info_dat:
+		try:
+			return json.loads(op_info_dat.text).get('op_type', '')
+		except:
+			pass
+	return ''
+
+def sanitize_name(name, base=True):
+	if base:
+		name = tdu.base(name)
+	
+	# Replace spaces with underscores but DO NOT lowercase, to preserve capitalization
+	return name.replace(' ', '_')

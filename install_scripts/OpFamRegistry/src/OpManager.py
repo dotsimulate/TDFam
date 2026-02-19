@@ -1,4 +1,6 @@
 import json
+import re
+from RegistryHelpers import sanitize_name
 
 class OpManager:
 	def __init__(self, ownerComp, registry):
@@ -89,14 +91,22 @@ class OpManager:
 		else:
 			tox_file_version = None
 
-		# Validate manifest (check, or create if necessary)
-		OpInfo, ParRetain, Shortcuts = self._validate_manifest(family_owner, clone, tox_file_version=tox_file_version, display_name=display_name)
-		self._handle_OpInfo(family_owner, clone, OpInfo=OpInfo)
-		self._handle_Shortcuts(family_owner, clone, OpInfo, Shortcuts)
-		self._tag_manifest(family_owner, clone, OpInfo)
+		if clone.family != 'COMP':
+			# gather OpInfo without manifest to get defaults
+			OpInfo = self._validate_OpInfo(family_owner, clone, None, display_name=display_name)
+			# tag normal Op
+			self._tag_op(family_owner, clone, OpInfo, is_manifest=False)
+			clone.name = sanitize_name(clone.name)
+			return clone
+		else:
+			# Validate manifest (check, or create if necessary)
+			OpInfo, ParRetain, Shortcuts = self._validate_manifest(family_owner, clone, tox_file_version=tox_file_version, display_name=display_name)
+			self._handle_OpInfo(family_owner, clone, OpInfo=OpInfo)
+			self._handle_Shortcuts(family_owner, clone, OpInfo, Shortcuts)
+			self._tag_op(family_owner, clone, OpInfo)
 
-		self._handle_license(family_owner, clone)
-		self._handle_attributes(family_owner, clone, is_file_based=is_file_based)
+			self._handle_license(family_owner, clone)
+			self._handle_attributes(family_owner, clone, is_file_based=is_file_based)
 
 		# TODO X: result = op.FAMREGISTRY.CallHook(family, '_PlaceOp', panelValue, lookup_name) ... now that the manifest did its job...?
 
@@ -119,12 +129,18 @@ class OpManager:
 		"""
 		Check if the operator has a FamManifest and OpInfo, and add them if not.
 		"""
-		_OpInfo = manifest.op('OpInfo')
-		if not _OpInfo:
-			_OpInfo = manifest.create(textDAT, 'OpInfo')
-			_OpInfo.text = {}
+		if manifest:
+			_OpInfo = manifest.op('OpInfo')
+			if not _OpInfo:
+				_OpInfo = manifest.create(textDAT, 'OpInfo')
+				_OpInfo.text = "{}"
 
-		OpInfo = json.loads(_OpInfo.text)
+			OpInfo = json.loads(_OpInfo.text)
+		else:
+			# at this point we are most likely dealing with a non-COMP operator edge case
+			OpInfo = {}
+			_OpInfo = None
+
 		if not (_version := OpInfo.get('op_version', None)):
 			_version = family_owner.par.Version.eval() 
 			if (_parVersion := _op.par['Version']) is not None:
@@ -134,12 +150,10 @@ class OpManager:
 
 			OpInfo['op_version'] = _version
 
-		#if not (_fam_version := OpInfo.get('fam_version', None)):
 		# always overwrite fam_version
 		_fam_version = family_owner.par.Version.eval()
 		OpInfo['fam_version'] = _fam_version
 
-		#if not (_op_fam := OpInfo.get('op_fam', None)):
 		# always overwrite op_fam
 		_op_fam = family_owner.Properties['family_name']
 		OpInfo['op_fam'] = _op_fam
@@ -151,13 +165,16 @@ class OpManager:
 			OpInfo['op_type'] = display_name or _op.name
 
 		if not OpInfo.get('op_label', None):
-			OpInfo['op_label'] = display_name or _op.name
+			# we only force sanitization if we're creating the label
+			label = self._sanitize_label(display_name or _op.name)
+			OpInfo['op_label'] = label
 		
 		# sanitize
-		OpInfo['op_name'] = self._sanitize_name(OpInfo['op_name'])
-		OpInfo['op_type'] = self._sanitize_name(OpInfo['op_type'])
+		OpInfo['op_name'] = sanitize_name(OpInfo['op_name'])
+		OpInfo['op_type'] = sanitize_name(OpInfo['op_type'])
 
-		_OpInfo.text = json.dumps(OpInfo, indent=4)
+		if _OpInfo:
+			_OpInfo.text = json.dumps(OpInfo, indent=4)
 		return OpInfo
 
 	def _validate_Shortcuts(self, family_owner, _op, manifest):
@@ -177,26 +194,30 @@ class OpManager:
 			_ParRetain.text = {}
 		return json.loads(_ParRetain.text)
 
-	def _tag_manifest(self, family_owner, _op, OpInfo):
-		manifest = _op.op('FamManifest')
-		if not manifest:
-			return
-
-		#fam_name = OpInfo.get('op_fam', family_owner.Properties['family_name'])
+	def _tag_op(self, family_owner, _op, OpInfo, is_manifest=True):
+		if not is_manifest:
+			_op_to_tag = _op
+		else:
+			_op_to_tag = _op.op('FamManifest')
+			if not _op_to_tag:
+				return
+			
+			#fam_name = OpInfo.get('op_fam', family_owner.Properties['family_name'])
 		fam_name = family_owner.Properties['family_name'] # NOTE: we ignore op_fam manifest value for now
 		op_type = OpInfo.get('op_type', "MISSING") # TODO: have a fallback for this (based on probably display name which needs then to be passed here)
 
 		# remove any tag starting with <FAM: or <TYPE: cause we're gonna add the actual current one if it's not already there
-		stale_tags = [tag for tag in manifest.tags if tag.startswith('<FAM:') or tag.startswith('<TYPE:')]
+		stale_tags = [tag for tag in _op_to_tag.tags if tag.startswith('<FAM:') or tag.startswith('<TYPE:')]
 		for tag in stale_tags:
-			manifest.tags.remove(tag)
+			_op_to_tag.tags.remove(tag)
 
-		if f'<FAM:{fam_name}>' not in manifest.tags:
-			manifest.tags.add(f'<FAM:{fam_name}>')
-		if f'<TYPE:{op_type}>' not in manifest.tags:
-			manifest.tags.add(f'<TYPE:{op_type}>')
-		if '<MANIFEST>' not in manifest.tags:
-			manifest.tags.add('<MANIFEST>')
+		if f'<FAM:{fam_name}>' not in _op_to_tag.tags:
+			_op_to_tag.tags.add(f'<FAM:{fam_name}>')
+		if f'<TYPE:{op_type}>' not in _op_to_tag.tags:
+			_op_to_tag.tags.add(f'<TYPE:{op_type}>')
+		if is_manifest:
+			if '<MANIFEST>' not in _op_to_tag.tags:
+				_op_to_tag.tags.add('<MANIFEST>')
 
 	def _handle_OpInfo(self, family_owner, _op, OpInfo = None):
 		if not OpInfo:
@@ -262,9 +283,16 @@ class OpManager:
 
 # region start helper methods
 
-	def _sanitize_name(self, name, base=True):
-		if base:
-			name = tdu.base(name)
-		return name.replace(' ', '_').lower()
+	def _sanitize_label(self, label):
+		all_families = list(families.keys())
+		all_families.extend(self.registry.RegisteredFams.keys())
+		
+		if all_families:
+			# Escape names and use boundaries that handle non-word characters
+			escaped = all_families
+			regex = r'(?<!\w)(' + '|'.join(escaped) + r')(?!\w)'
+			label = re.sub(regex, lambda m: m.group(1).upper(), label, flags=re.IGNORECASE)
+		
+		return label
 
 # endregion
