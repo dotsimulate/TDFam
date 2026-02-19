@@ -130,6 +130,54 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         """
         return self._get_operator_source(lookup_name)
 
+    def FindOps(self, type=None, name=None, path=None,
+                depth=None, maxDepth=None,
+                tags=[], allTags=False,
+                parValue=None, parExpr=None, parName=None,
+                key=None,
+                include_stubs=False, network=None):
+        """
+        Find placed operators of this family. Mirrors TD's findChildren API.
+
+        Examples:
+            installer.FindOps(name='agent*')
+            installer.FindOps(type=COMP, key=lambda o: o.par.Version.eval() > '1.0')
+            installer.FindOps(parName='Version', parValue='2.0.0')
+            installer.FindOps(network=op('/project1'), maxDepth=2)
+
+        Returns:
+            list: Matching placed family operators
+        """
+        return self._find_ops(
+            type=type, name=name, path=path,
+            depth=depth, maxDepth=maxDepth,
+            tags=tags, allTags=allTags,
+            parValue=parValue, parExpr=parExpr, parName=parName,
+            key=key, include_stubs=include_stubs, network=network
+        )
+
+    def StubOp(self, comp):
+        """Create a lightweight stub from a placed operator.
+
+        Args:
+            comp: The operator to stub (OP or path string)
+
+        Returns:
+            The stub component, or None if skipped
+        """
+        return self._create_stub(comp)
+
+    def UpdateOp(self, comp):
+        """Update a single operator to the newest version.
+
+        Args:
+            comp: The operator to update (OP or path string)
+
+        Returns:
+            tuple: (success, message)
+        """
+        return self._update_operator(comp)
+
     # endregion
 
     # region Parameter Handlers

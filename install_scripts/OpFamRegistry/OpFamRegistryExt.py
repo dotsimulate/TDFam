@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 from TDStoreTools import DependDict
 from GlobalUIInjector import GlobalUIInjector
 from TagManager import TagManager
@@ -449,30 +449,54 @@ class OpFamRegistryExt:
 		clone = self.OpManager.manageOpClone(family_owner, opType, display_name)
 		return clone
 
-	def find_placed_operators(self, family_name, network=None, include_stubs=False):
+	def FindOps(self, family_name,
+			   type=None, name=None, path=None,
+			   depth=None, maxDepth=None,
+			   tags=[], allTags=False,
+			   parValue=None, parExpr=None, parName=None,
+			   key=None,
+			   include_stubs=False, network=None):
 		"""
-		Find all placed operators of a family via their FamManifest tags.
-		Excludes the installer itself and operators_comp contents.
+		Find placed operators of a family. Mirrors TD's findChildren API.
+
+		Phase 1: Find all FamManifest COMPs tagged <FAM:name> + <MANIFEST>.
+		Phase 2: Post-filter parent operators with findChildren-style params.
 
 		Args:
 			family_name: The family name to search for
-			network: Optional root to search from (defaults to /)
+			type: Filter by TD OP type (e.g. COMP, TOP)
+			name: Filter by name pattern (fnmatch, e.g. 'agent*')
+			path: Filter by path pattern (fnmatch)
+			depth: Exact depth relative to network root
+			maxDepth: Maximum depth relative to network root
+			tags: Additional tag filters (checked on operator AND manifest)
+			allTags: If True, require all tags to match
+			parValue: Filter ops with a parameter matching this value
+			parExpr: Filter ops with a parameter matching this expression
+			parName: Parameter name to check for parValue/parExpr filters
+			key: Custom filter function â€” key(op) must return True to include
 			include_stubs: If True, include stubbed operators in results
+			network: Root component to search from (defaults to /)
 
 		Returns:
-			list: Placed family operators
+			list: Matching placed family operators
 		"""
+		import fnmatch as _fnmatch
+
 		installer = self.GetFamilyExt(family_name)
 		if not installer:
 			return []
 
 		search_root = network or op('/')
+
+		# Phase 1: Find all manifests for this family
 		manifests = search_root.findChildren(
 			type=COMP,
 			tags=[f'<FAM:{family_name}>', '<MANIFEST>'],
 			allTags=True,
 		)
 
+		# Collect parent operators with standard exclusions
 		operators = []
 		for m in manifests:
 			parent_op = m.parent()
@@ -486,8 +510,52 @@ class OpFamRegistryExt:
 				continue
 			if installer.operators_comp and installer.operators_comp.path in parent_op.path:
 				continue
-			operators.append(parent_op)
-		return operators
+			operators.append((parent_op, m))
+
+		# Phase 2: Apply findChildren-style filters
+		results = []
+		root_depth = search_root.path.rstrip('/').count('/')
+
+		for o, manifest in operators:
+			if type is not None and not isinstance(o, type):
+				continue
+
+			if name is not None and not _fnmatch.fnmatch(o.name, name):
+				continue
+
+			if path is not None and not _fnmatch.fnmatch(o.path, path):
+				continue
+
+			if depth is not None or maxDepth is not None:
+				op_depth = o.path.rstrip('/').count('/') - root_depth
+				if depth is not None and op_depth != depth:
+					continue
+				if maxDepth is not None and op_depth > maxDepth:
+					continue
+
+			if tags:
+				combined_tags = set(o.tags) | set(manifest.tags)
+				if allTags:
+					if not all(t in combined_tags for t in tags):
+						continue
+				else:
+					if not any(t in combined_tags for t in tags):
+						continue
+
+			if parName is not None:
+				if not hasattr(o.par, parName):
+					continue
+				if parValue is not None and getattr(o.par, parName).eval() != parValue:
+					continue
+				if parExpr is not None and getattr(o.par, parName).expr != parExpr:
+					continue
+
+			if key is not None and not key(o):
+				continue
+
+			results.append(o)
+
+		return results
 # endregion Operator Management
 
 # region Internal Helpers
