@@ -5,7 +5,7 @@ Handles creating lightweight stubs from operators and replacing them
 back with full operators. Used for performance optimization.
 """
 import re
-from RegistryHelpers import get_op_type_from_manifest
+from RegistryHelpers import get_op_type_from_manifest, resolve_op_type, ensure_manifest_tags, apply_family_color
 
 class StubManager:
 	"""
@@ -67,11 +67,8 @@ class StubManager:
 
 		name = comp.name
 		manifest = comp.op('FamManifest')
-		if manifest:
-			op_type = get_op_type_from_manifest(manifest)
-		else:
-			category_tags = self.registry._GetCategoryTags(family_name) or set()
-			op_type = self.registry.TagManager.get_operator_type(comp, family_name, category_tags)
+		category_tags = self.registry._GetCategoryTags(family_name) or set()
+		op_type, _ = resolve_op_type(comp, family_name, self.registry.TagManager, category_tags)
 
 		print(f"createStub: Creating stub for {comp.path} with type '{op_type}'")
 
@@ -292,10 +289,7 @@ class StubManager:
 		# Find master
 		target_parent = stub.parent()
 		source_type, source = self.registry.FileManager.get_operator_source(
-			family_name,
-			op_type,
-			getattr(installer, 'operators_folder', None),
-			getattr(installer, 'dynamic_refresh', False)
+			family_name, op_type
 		) or (None, None)
 
 		if not source:
@@ -326,13 +320,7 @@ class StubManager:
 			stub_manifest_copy = stub.op('FamManifest')
 			if stub_manifest_copy:
 				new_manifest = new_comp.copy(stub_manifest_copy)
-		if new_manifest:
-			if '<STUB>' in new_manifest.tags:
-				new_manifest.tags.remove('<STUB>')
-			if f'<FAM:{family_name}>' not in new_manifest.tags:
-				new_manifest.tags.add(f'<FAM:{family_name}>')
-			if '<MANIFEST>' not in new_manifest.tags:
-				new_manifest.tags.add('<MANIFEST>')
+		ensure_manifest_tags(new_manifest, family_name, op_type=op_type)
 		
 		# Restore position/size
 		new_comp.nodeX = stub.nodeX
@@ -363,9 +351,7 @@ class StubManager:
 
 			# Apply family color for file-based ops
 			if source_type == 'file' and hasattr(installer, 'ownerComp'):
-				fam_owner = installer.ownerComp
-				if hasattr(fam_owner.par, 'Colorfileops') and fam_owner.par.Colorfileops.eval():
-					new_comp.color = (fam_owner.par.Colorr.eval(), fam_owner.par.Colorg.eval(), fam_owner.par.Colorb.eval())
+				apply_family_color(installer.ownerComp, new_comp)
 
 			# Hook: PostReplace
 			self.registry.CallHook(family_name, '_PostReplace', new_comp, stub)
@@ -437,41 +423,6 @@ class StubManager:
 						pass
 
 	# ==================== Batch Operations ====================
-
-	def find_family_operators(self, family_name, network=None, max_depth=None):
-		"""
-		Find all operators of this family via their FamManifest tags.
-
-		Returns:
-			list: Family operators (excluding installer, stubs, and operators_comp)
-		"""
-		installer = self.registry.GetFamilyExt(family_name)
-		if not installer:
-			return []
-
-		search_root = network or op('/')
-		# No depth limit — manifests are children of placed ops
-		manifests = search_root.findChildren(
-			type=COMP,
-			tags=[f'<FAM:{family_name}>', '<MANIFEST>'],
-			allTags=True,
-		)
-
-		operators = []
-		for m in manifests:
-			parent_op = m.parent()
-			if not parent_op:
-				continue
-			if '<STUB>' in m.tags:
-				continue
-			if parent_op == installer.ownerComp:
-				continue
-			if installer.ownerComp.path in parent_op.path:
-				continue
-			if installer.operators_comp and installer.operators_comp.path in parent_op.path:
-				continue
-			operators.append(parent_op)
-		return operators
 
 	def find_stubs(self, family_name, network=None):
 		"""

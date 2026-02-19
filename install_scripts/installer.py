@@ -282,10 +282,7 @@ class OpFamCreateExt:
 
     def _get_operator_source(self, lookup_name):
         return self.fam_registry.FileManager.get_operator_source(
-            self.FamilyName.val,
-            lookup_name,
-            self.operators_folder,
-            self.dynamic_refresh
+            self.FamilyName.val, lookup_name
         )
 
     def _refresh_folder(self):
@@ -336,7 +333,7 @@ class OpFamCreateExt:
     # region Stubs
 
     def _find_family_operators(self, scope=None):
-        return self.fam_registry.StubManager.find_family_operators(self.FamilyName.val, scope)
+        return self.fam_registry.find_placed_operators(self.FamilyName.val, scope)
 
     def _find_stubs(self, scope=None):
         return self.fam_registry.StubManager.find_stubs(self.FamilyName.val, scope)
@@ -352,12 +349,6 @@ class OpFamCreateExt:
         if isinstance(comp, str):
             comp = op(comp)
         if not comp:
-            return None
-
-        if self.FamilyName.val not in comp.tags:
-            return None
-
-        if f"{self.FamilyName.val}stub" in str(comp.tags):
             return None
 
         ui.undo.startBlock(f'Create Stub for {comp.name}')

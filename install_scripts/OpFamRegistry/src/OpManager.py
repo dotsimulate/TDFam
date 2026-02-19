@@ -1,6 +1,6 @@
 import json
 import re
-from RegistryHelpers import sanitize_name
+from RegistryHelpers import sanitize_name, ensure_manifest_tags, apply_family_color, resolve_op_type
 
 class OpManager:
 	def __init__(self, ownerComp, registry):
@@ -195,29 +195,14 @@ class OpManager:
 		return json.loads(_ParRetain.text)
 
 	def _tag_op(self, family_owner, _op, OpInfo, is_manifest=True):
-		if not is_manifest:
-			_op_to_tag = _op
-		else:
-			_op_to_tag = _op.op('FamManifest')
-			if not _op_to_tag:
-				return
-			
-			#fam_name = OpInfo.get('op_fam', family_owner.Properties['family_name'])
-		fam_name = family_owner.Properties['family_name'] # NOTE: we ignore op_fam manifest value for now
-		op_type = OpInfo.get('op_type', "MISSING") # TODO: have a fallback for this (based on probably display name which needs then to be passed here)
+		fam_name = family_owner.Properties['family_name']
+		op_type = OpInfo.get('op_type', "MISSING")
 
-		# remove any tag starting with <FAM: or <TYPE: cause we're gonna add the actual current one if it's not already there
-		stale_tags = [tag for tag in _op_to_tag.tags if tag.startswith('<FAM:') or tag.startswith('<TYPE:')]
-		for tag in stale_tags:
-			_op_to_tag.tags.remove(tag)
-
-		if f'<FAM:{fam_name}>' not in _op_to_tag.tags:
-			_op_to_tag.tags.add(f'<FAM:{fam_name}>')
-		if f'<TYPE:{op_type}>' not in _op_to_tag.tags:
-			_op_to_tag.tags.add(f'<TYPE:{op_type}>')
 		if is_manifest:
-			if '<MANIFEST>' not in _op_to_tag.tags:
-				_op_to_tag.tags.add('<MANIFEST>')
+			target = _op.op('FamManifest')
+		else:
+			target = _op
+		ensure_manifest_tags(target, fam_name, op_type=op_type, is_manifest=is_manifest)
 
 	def _handle_OpInfo(self, family_owner, _op, OpInfo = None):
 		if not OpInfo:
@@ -271,11 +256,8 @@ class OpManager:
 				_op.copy(license)
 
 	def _handle_attributes(self, family_owner, _op, is_file_based=False):
-		# Apply family color to file-based ops if Colorfileops is enabled
-		# NOTE: should we do this regardless of the Colorfileops parameter?
-		if is_file_based and hasattr(family_owner.par, 'Colorfileops') and family_owner.par.Colorfileops.eval():
-			color = family_owner.par.Colorr.eval(), family_owner.par.Colorg.eval(), family_owner.par.Colorb.eval()
-			_op.color = color
+		if is_file_based:
+			apply_family_color(family_owner, _op)
 
 		_op.allowCooking = True
 		_op.bypass = False

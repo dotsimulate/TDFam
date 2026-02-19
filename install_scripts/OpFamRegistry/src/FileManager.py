@@ -120,16 +120,14 @@ class FileManager:
 		except:
 			return None
 
-	def get_operator_source(self, family_name, lookup_name, operators_folder=None, dynamic_refresh=False):
-		# TODO X: move this from FileManager to OpManager
+	def get_operator_source(self, family_name, lookup_name):
 		"""
 		Get operator source - embedded or file-based.
+		Reads operators_folder and dynamic_refresh from the installer internally.
 
 		Args:
 			family_name: The family name
 			lookup_name: Operator name to find (lowercase)
-			operators_folder: Path to external folder (for dynamic refresh)
-			dynamic_refresh: If True, scan folder live instead of using cache
 
 		Returns:
 			tuple: ('embedded', op) or ('file', path) or None
@@ -137,6 +135,9 @@ class FileManager:
 		installer = self.registry.GetFamilyExt(family_name)
 		if not installer:
 			return None
+
+		operators_folder = getattr(installer, 'operators_folder', None)
+		dynamic_refresh = getattr(installer, 'dynamic_refresh', False)
 
 		# Find embedded operator from operators_comp
 		custom_ops = installer.operators_comp
@@ -149,11 +150,9 @@ class FileManager:
 				# need to look into manifests actually
 				for _manifest in custom_ops.findChildren(tags=["<MANIFEST>"], maxDepth=2):
 					if _opInfo := _manifest.op('OpInfo'):
-						# load json to dict
 						import json
 						_opInfo_dict = json.loads(_opInfo.text)
 						if _opType := _opInfo_dict.get('op_type'):
-							# remove family name from op_type
 							_opType = _opType.replace(family_name, '')
 							if _opType == lookup_name:
 								manifested = _manifest.parent()

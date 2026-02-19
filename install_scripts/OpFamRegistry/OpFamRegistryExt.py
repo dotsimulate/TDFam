@@ -448,6 +448,46 @@ class OpFamRegistryExt:
 		family_owner = self.GetFamilyOwner(fam_name)
 		clone = self.OpManager.manageOpClone(family_owner, opType, display_name)
 		return clone
+
+	def find_placed_operators(self, family_name, network=None, include_stubs=False):
+		"""
+		Find all placed operators of a family via their FamManifest tags.
+		Excludes the installer itself and operators_comp contents.
+
+		Args:
+			family_name: The family name to search for
+			network: Optional root to search from (defaults to /)
+			include_stubs: If True, include stubbed operators in results
+
+		Returns:
+			list: Placed family operators
+		"""
+		installer = self.GetFamilyExt(family_name)
+		if not installer:
+			return []
+
+		search_root = network or op('/')
+		manifests = search_root.findChildren(
+			type=COMP,
+			tags=[f'<FAM:{family_name}>', '<MANIFEST>'],
+			allTags=True,
+		)
+
+		operators = []
+		for m in manifests:
+			parent_op = m.parent()
+			if not parent_op:
+				continue
+			if not include_stubs and '<STUB>' in m.tags:
+				continue
+			if parent_op == installer.ownerComp:
+				continue
+			if installer.ownerComp.path in parent_op.path:
+				continue
+			if installer.operators_comp and installer.operators_comp.path in parent_op.path:
+				continue
+			operators.append(parent_op)
+		return operators
 # endregion Operator Management
 
 # region Internal Helpers

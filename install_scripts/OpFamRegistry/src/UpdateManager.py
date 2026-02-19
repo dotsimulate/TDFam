@@ -4,7 +4,7 @@ Update system for opfam-create.
 Handles updating operators to newer versions while preserving
 connections and parameter values.
 """
-from RegistryHelpers import get_op_type_from_manifest
+from RegistryHelpers import get_op_type_from_manifest, resolve_op_type, ensure_manifest_tags, apply_family_color
 
 class UpdateManager:
 	"""
@@ -31,9 +31,7 @@ class UpdateManager:
 		"""
 		Find a matching master operator for a component.
 
-		Matching methods:
-		1. FamManifest OpInfo op_type
-		2. ext0object parameter (legacy fallback)
+		Uses resolve_op_type to check manifest first, then tags.
 
 		Returns:
 			tuple: (source_type, source, match_method) or (None, None, 'none')
@@ -42,26 +40,16 @@ class UpdateManager:
 		if not installer:
 			return (None, None, 'none')
 
-		# Try matching by manifest op_name
-		manifest = comp.op('FamManifest')
-		if manifest:
-			comp_type = get_op_type_from_manifest(manifest)
-			info_type = 'manifest'
-		else:
-			category_tags = self.registry._GetCategoryTags(family_name) or set()
-			comp_type = self.registry.TagManager.get_operator_type(comp, family_name, category_tags)
-			info_type = 'tags'
-			
-		if comp_type:
-			source_type, source = self.registry.FileManager.get_operator_source(
-				family_name,
-				comp_type,
-				getattr(installer, 'operators_folder', None),
-				getattr(installer, 'dynamic_refresh', False)
-			) or (None, None)
-			if source:
-				return (source_type, source, info_type)
+		category_tags = self.registry._GetCategoryTags(family_name) or set()
+		comp_type, info_type = resolve_op_type(comp, family_name, self.registry.TagManager, category_tags)
 
+		if comp_type:
+			result = self.registry.FileManager.get_operator_source(
+				family_name, comp_type
+			)
+			if result:
+				source_type, source = result
+				return (source_type, source, info_type)
 
 		return (None, None, 'none')
 
@@ -174,17 +162,16 @@ class UpdateManager:
 				if old_pars:
 					self._copy_par(p, old_pars[0])
 
-			# Ensure manifest exists on new comp
-			new_manifest = new_comp.op('FamManifest')
-			if not new_manifest:
-				old_manifest = old_comp.op('FamManifest')
-				if old_manifest:
-					new_manifest = new_comp.copy(old_manifest)
-			if new_manifest:
-				if f'<FAM:{family_name}>' not in new_manifest.tags:
-					new_manifest.tags.add(f'<FAM:{family_name}>')
-				if '<MANIFEST>' not in new_manifest.tags:
-					new_manifest.tags.add('<MANIFEST>')
+			# Ensure manifest exists on new comp (handles edge case where old op
+			# was non-COMP with no manifest but new master is a COMP)
+			if new_comp.isCOMP:
+				OpInfo, _, _ = self.registry.OpManager._validate_manifest(
+					installer.ownerComp, new_comp,
+					tox_file_version=None, display_name=old_name
+				)
+				self.registry.OpManager._tag_op(installer.ownerComp, new_comp, OpInfo)
+			else:
+				ensure_manifest_tags(new_comp, family_name, is_manifest=False)
 
 			# Hook: PreserveSpecialParams
 			self.registry.CallHook(family_name, '_PreserveSpecialParams', new_comp, old_comp)
@@ -211,9 +198,7 @@ class UpdateManager:
 
 			# Apply family color for file-based ops
 			if is_file_loaded and hasattr(installer, 'ownerComp'):
-				fam_owner = installer.ownerComp
-				if hasattr(fam_owner.par, 'Colorfileops') and fam_owner.par.Colorfileops.eval():
-					new_comp.color = (fam_owner.par.Colorr.eval(), fam_owner.par.Colorg.eval(), fam_owner.par.Colorb.eval())
+				apply_family_color(installer.ownerComp, new_comp)
 
 			# Hook: PostUpdate
 			self.registry.CallHook(family_name, '_PostUpdate', new_comp)
@@ -222,39 +207,6 @@ class UpdateManager:
 
 		except Exception as e:
 			return (False, f"Error updating {old_comp.path}: {e}")
-
-	def find_family_operators(self, family_name, network=None):
-		"""
-		Find all operators of this family via their FamManifest tags.
-
-		Returns:
-			list: Family operators (excluding installer and operators_comp)
-		"""
-		installer = self.registry.GetFamilyExt(family_name)
-		if not installer:
-			return []
-
-		search_root = network or op('/')
-		manifests = search_root.findChildren(
-			type=COMP,
-			tags=[f'<FAM:{family_name}>', '<MANIFEST>'],
-		)
-
-		operators = []
-		for m in manifests:
-			parent_op = m.parent()
-			if not parent_op:
-				continue
-			if '<STUB>' in m.tags:
-				continue
-			if parent_op == installer.ownerComp:
-				continue
-			if installer.ownerComp.path in parent_op.path:
-				continue
-			if installer.operators_comp and installer.operators_comp.path in parent_op.path:
-				continue
-			operators.append(parent_op)
-		return operators
 
 	def analyze_operators(self, family_name, operators):
 		"""
@@ -288,7 +240,7 @@ class UpdateManager:
 				# info_type: from manifest or tag
 				source_type, _, info_type = self.find_matching_master(family_name, comp)
 				if info_type == 'manifest':
-					restults['with_manifest'].append(comp)
+					results['with_manifest'].append(comp)
 
 				if source_type:
 					results['updateable'].append(comp)
