@@ -62,6 +62,8 @@ class OpFamUIExt:
 		if self.fam_registry:
 			family_owner = self.fam_registry.RegisteredFams.get(fam_name)
 			ui_comp = family_owner.par.Famuicomp.eval() if family_owner and hasattr(family_owner.par, 'Famuicomp') else family_owner
+			if not ui_comp:
+				ui_comp = family_owner
 			self.parameters_ui.par.op = ui_comp
 			self.fam_menu.op('buttonSettings').par.value0 = False
 
