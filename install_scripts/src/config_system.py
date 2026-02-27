@@ -42,7 +42,7 @@ class ConfigManager:
         """Read all DAT tables into Config DependDict."""
         config = self.installer.Config
         config['group_mapping'] = self._read_group_mapping_table()
-        config['replace_index'] = self._read_replace_index_table()
+        config['label_replacements'] = self._read_label_replacements_table()
         config['os_incompatible'] = self._read_os_incompatible_table()
         config['relabel_index'] = self._read_relabel_index_table()
         config['settings'] = self._read_settings_table()
@@ -53,7 +53,7 @@ class ConfigManager:
         try:
             config = self.installer.Config
             self._write_group_mapping_table(config['group_mapping'])
-            self._write_replace_index_table(config['replace_index'])
+            self._write_label_replacements_table(config['label_replacements'])
             self._write_os_incompatible_table(config['os_incompatible'])
             self._write_relabel_index_table(config['relabel_index'])
             self._write_settings_table(config['settings'])
@@ -69,8 +69,8 @@ class ConfigManager:
         config = self.installer.Config
         if table_name == 'group_mapping':
             config['group_mapping'] = self._read_group_mapping_table()
-        elif table_name == 'replace_index':
-            config['replace_index'] = self._read_replace_index_table()
+        elif table_name == 'label_replacements':
+            config['label_replacements'] = self._read_label_replacements_table()
         elif table_name == 'os_incompatible':
             config['os_incompatible'] = self._read_os_incompatible_table()
         elif table_name == 'relabel_index':
@@ -96,12 +96,13 @@ class ConfigManager:
                 op_name = table[row, col].val
                 if op_name:
                     operators.append(op_name)
-            result[group_name] = operators
+            if operators:
+                result[group_name] = operators
         return result
 
-    def _read_replace_index_table(self):
-        """Read replace_index DAT into dict."""
-        table = self.ownerComp.op('replace_index')
+    def _read_label_replacements_table(self):
+        """Read label_replacements DAT into dict."""
+        table = self.ownerComp.op('label_replacements')
         if not table or table.numRows == 0:
             return {}
 
@@ -196,11 +197,11 @@ class ConfigManager:
                 row.append(ops[row_idx] if row_idx < len(ops) else '')
             table.appendRow(row)
 
-    def _write_replace_index_table(self, data):
-        """Write dict to replace_index DAT."""
-        table = self.ownerComp.op('replace_index')
+    def _write_label_replacements_table(self, data):
+        """Write dict to label_replacements DAT."""
+        table = self.ownerComp.op('label_replacements')
         if not table:
-            table = self.ownerComp.create(tableDAT, 'replace_index')
+            table = self.ownerComp.create(tableDAT, 'label_replacements')
         table.clear()
 
         # Always add header row
@@ -330,10 +331,10 @@ class ConfigManager:
             table.clear()
             table.appendRow(['group'])  # Placeholder header
 
-        # replace_index
-        table = self.ownerComp.op('replace_index')
+        # label_replacements
+        table = self.ownerComp.op('label_replacements')
         if not table:
-            table = self.ownerComp.create(tableDAT, 'replace_index')
+            table = self.ownerComp.create(tableDAT, 'label_replacements')
             table.clear()
             table.appendRow(['find', 'replace'])
 
@@ -360,8 +361,8 @@ class ConfigManager:
 
     def ensure_table_headers(self):
         """Ensure existing config tables have proper headers (migration helper)."""
-        # replace_index
-        table = self.ownerComp.op('replace_index')
+        # label_replacements
+        table = self.ownerComp.op('label_replacements')
         if table and table.numRows > 0 and table[0, 0].val not in ('find', 'old', 'search'):
             table.insertRow(['find', 'replace'], 0)
 
@@ -417,7 +418,7 @@ class ConfigManager:
         installer_config = self.installer.Config
         if 'tables' in config_data:
             installer_config['group_mapping'] = config_data['tables'].get('group_mapping', {})
-            installer_config['replace_index'] = config_data['tables'].get('replace_index', {})
+            installer_config['label_replacements'] = config_data['tables'].get('label_replacements') or config_data['tables'].get('replace_index', {})
             installer_config['os_incompatible'] = config_data['tables'].get('os_incompatible', {})
             installer_config['relabel_index'] = config_data['tables'].get('relabel_index', {})
         if 'settings' in config_data:
@@ -461,7 +462,7 @@ class ConfigManager:
         export_data = {
             "tables": {
                 "group_mapping": self._to_plain_dict(config['group_mapping']),
-                "replace_index": self._to_plain_dict(config['replace_index']),
+                "label_replacements": self._to_plain_dict(config['label_replacements']),
                 "os_incompatible": self._to_plain_dict(config['os_incompatible']),
                 "relabel_index": self._to_plain_dict(config['relabel_index'])
             },

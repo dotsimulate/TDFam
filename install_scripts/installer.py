@@ -37,7 +37,7 @@ class OpFamCreateExt:
 
         self.Config = DependDict({
             'group_mapping': {},
-            'replace_index': {},
+            'label_replacements': {},
             'os_incompatible': {},
             'relabel_index': {},
             'settings': {},

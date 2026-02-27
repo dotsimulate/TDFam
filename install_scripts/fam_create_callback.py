@@ -29,7 +29,7 @@ def onCook(scriptOp):
 
     # Read from Config DependDict (source of truth)
     group_mapping = config.get('group_mapping', {})
-    replace_index_data = config.get('replace_index', {})
+    replace_index_data = config.get('label_replacements', {})
     os_incompatible = config.get('os_incompatible', {})
     settings_data = config.get('settings', {})
 
@@ -48,7 +48,7 @@ def onCook(scriptOp):
         os_values[normalized] = str(os_data.get('windows', 1))
         exclude_values[normalized] = str(os_data.get('exclude', 0))
 
-    # replace_index is already in correct format (find -> replace)
+    # label_replacements is already in correct format (find -> replace)
     replace_index = replace_index_data
 
     # Get embedded operators from Opcomp parameter
@@ -65,6 +65,7 @@ def onCook(scriptOp):
     folder_ops = []
 
     # Get settings from Config DependDict
+    has_groups = bool(group_mapping)
     ungrouped_label = settings_data.get('ungrouped_label', 'Other')
     exclude_behavior = settings_data.get('exclude_behavior', 'hide')
     show_ungrouped = settings_data.get('show_ungrouped', '1')
@@ -104,21 +105,25 @@ def onCook(scriptOp):
         if is_excluded and exclude_behavior == 'hide':
             continue
 
-        # Get group from table first (table takes precedence)
-        op_group = group_index.get(op_name)
+        # Get group - only if groups are defined
+        op_group = None
+        if has_groups:
+            # Get group from table first (table takes precedence)
+            op_group = group_index.get(op_name)
 
-        # If not in table, check for folder_category (folder-based ops)
-        if op_group is None and hasattr(o, 'folder_category'):
-            if o.folder_category:
-                op_group = o.folder_category
-            else:
+            # If not in table, check for folder_category (folder-based ops)
+            if op_group is None and hasattr(o, 'folder_category'):
+                if o.folder_category:
+                    op_group = o.folder_category
+                else:
+                    op_group = ungrouped_label
+
+            # Check show_ungrouped setting
+            if op_group is None:
+                if show_ungrouped != '1':
+                    continue  # Skip ungrouped operators
                 op_group = ungrouped_label
 
-        # Check show_ungrouped setting
-        if op_group is None:
-            if show_ungrouped != '1':
-                continue  # Skip ungrouped operators
-            op_group = ungrouped_label
         if op_group != current_group:
             current_group = op_group
             # Add group header (skip if empty)
