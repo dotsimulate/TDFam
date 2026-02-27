@@ -285,6 +285,9 @@ class OpFamCreateExt:
             self.FamilyName.val, lookup_name
         )
 
+    def _get_operators(self):
+        return self.fam_registry.GetOperators(self.FamilyName.val)
+
     def _refresh_folder(self):
         self.fam_registry.FileManager.refresh_cache(self.FamilyName.val, self.operators_folder)
 

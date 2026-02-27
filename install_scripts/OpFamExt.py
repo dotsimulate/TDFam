@@ -130,6 +130,17 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         """
         return self._get_operator_source(lookup_name)
 
+    def GetOperators(self):
+        """
+        Get all available operators in this family with full metadata.
+
+        Returns:
+            dict: Keyed by op_type. Each value contains:
+                op_type, op_name, op_label, op_version, fam_version,
+                op_fam, group, source (tuple), os_compatible
+        """
+        return self._get_operators()
+
     def FindOps(self, type=None, name=None, path=None,
                 depth=None, maxDepth=None,
                 tags=[], allTags=False,

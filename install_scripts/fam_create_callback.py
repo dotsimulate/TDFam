@@ -1,8 +1,7 @@
 # me - this DAT
 # scriptOp - the OP which is cooking
 # FAM CREATE CALLBACK
-# Builds the operator family menu from Config DependDict and Properties
-import re
+# Builds the operator family menu from GetOperators() API + menu-specific formatting
 
 def onSetupParameters(scriptOp):
     return
@@ -27,154 +26,73 @@ def onCook(scriptOp):
     scriptOp.clear()
     scriptOp.appendRow(['name','label','type','subtype','mininputs','maxinputs','ordering','level','lictype','os','score','family','opType'])
 
-    # Read from Config DependDict (source of truth)
-    group_mapping = config.get('group_mapping', {})
-    replace_index_data = config.get('label_replacements', {})
-    os_incompatible = config.get('os_incompatible', {})
+    # Get all operator data from the API
+    all_ops = installer_comp.GetOperators()
+    if not all_ops:
+        return
+
+    # Menu-specific settings from Config
     settings_data = config.get('settings', {})
-
-    # Build group_index: operator_name -> group_name
-    group_index = {}
-    for group_name, operators in group_mapping.items():
-        for op_name in operators:
-            normalized_name = op_name.lower().replace(' ', '_')
-            group_index[normalized_name] = group_name
-
-    # Build os_values and exclude_values from os_incompatible
-    os_values = {}
-    exclude_values = {}
-    for op_name, os_data in os_incompatible.items():
-        normalized = op_name.lower().replace(' ', '_')
-        os_values[normalized] = str(os_data.get('windows', 1))
-        exclude_values[normalized] = str(os_data.get('exclude', 0))
-
-    # label_replacements is already in correct format (find -> replace)
-    replace_index = replace_index_data
-
-    # Get embedded operators from Opcomp parameter
-    custom_operators_base = installer_comp.par.Opcomp.eval()
-
-    if custom_operators_base:
-        embedded_ops = custom_operators_base.findChildren(maxDepth=1)
-        embedded_names = {o.name.lower() for o in embedded_ops}
-    else:
-        embedded_ops = []
-        embedded_names = set()
-
-    # Get folder-based operators (from cache)
-    folder_ops = []
-
-    # Get settings from Config DependDict
-    has_groups = bool(group_mapping)
     ungrouped_label = settings_data.get('ungrouped_label', 'Other')
     exclude_behavior = settings_data.get('exclude_behavior', 'hide')
     show_ungrouped = settings_data.get('show_ungrouped', '1')
 
-    # Read from Properties folder_cache - accessing creates cook dependency
-    # When folder_cache changes, this scriptDAT will recook
-    folder_cache = installer_comp.Properties['folder_cache']
-    if folder_cache:
-        for name, info in folder_cache.items():
-            if name.lower() not in embedded_names:
-                folder_ops.append(type('FolderOp', (), {
-                    'name': name,
-                    'inputConnectors': [],
-                    'path': info['path'],
-                    'folder_category': info.get('category')  # None for ungrouped
-                })())
-
-    # Combine and sort
-    ops = list(embedded_ops) + folder_ops
-    ops = sorted(ops, key=lambda o: (group_index.get(o.name.lower(), 'ZZZ'), o.name))
-
+    # Generator detection for menu type column
+    custom_operators_base = installer_comp.par.Opcomp.eval()
     generators_comp = custom_operators_base.op('generators') if custom_operators_base else None
     generators = generators_comp.enclosedOPs if generators_comp else []
     types = [f'layouts/{fam_name}/defFilter', f'layouts/{fam_name}/defGenerator']
-    
+
+    # Sort by group then name
+    sorted_ops = sorted(all_ops.values(), key=lambda o: (o.get('group') or 'ZZZ', o['op_name']))
+
+    has_groups = any(o.get('group') is not None for o in sorted_ops)
+
     current_group = None
-    for i, o in enumerate(ops):
-        # Skip operators with parentshortcut == 'Annotate' (only for embedded ops)
-        if hasattr(o, 'par') and hasattr(o.par, 'parentshortcut') and o.par.parentshortcut.eval() == 'Annotate':
-            continue
+    for op_data in sorted_ops:
+        os_compat = op_data['os_compatible']
 
-        op_name = o.name.lower()
-        normalized_name = op_name.replace(' ', '_')
-
-        # Check exclude flag - skip if exclude_behavior is 'hide'
-        is_excluded = exclude_values.get(normalized_name, '0') == '1'
+        # Check exclude flag
+        is_excluded = os_compat.get('exclude', 0) == 1
         if is_excluded and exclude_behavior == 'hide':
             continue
 
-        # Get group - only if groups are defined
-        op_group = None
-        if has_groups:
-            # Get group from table first (table takes precedence)
-            op_group = group_index.get(op_name)
-
-            # If not in table, check for folder_category (folder-based ops)
-            if op_group is None and hasattr(o, 'folder_category'):
-                if o.folder_category:
-                    op_group = o.folder_category
-                else:
-                    op_group = ungrouped_label
-
-            # Check show_ungrouped setting
-            if op_group is None:
-                if show_ungrouped != '1':
-                    continue  # Skip ungrouped operators
-                op_group = ungrouped_label
+        # Group handling (menu-specific)
+        op_group = op_data.get('group')
+        if has_groups and op_group is None:
+            if show_ungrouped != '1':
+                continue
+            op_group = ungrouped_label
 
         if op_group != current_group:
             current_group = op_group
-            # Add group header (skip if empty)
             if current_group:
                 scriptOp.appendRow(['', current_group, f'layouts/{fam_name}/defLabel'])
-            
-        name = o.name
-        normalized_name = name.lower().replace(' ', '_')
-        os_compat = os_values.get(normalized_name, '1')
 
+        # Get the source OP ref for inputConnectors and generator check
+        source_type, source_ref = op_data['source']
+        if source_type == 'embedded':
+            maxinputs = 9999 if source_ref.name == 'composite' else len(source_ref.inputConnectors)
+            node_type = types[source_ref in generators]
+        else:
+            maxinputs = 0
+            node_type = types[0]
 
-        label = ' '.join(word.capitalize() for word in name.split('_'))
+        opType = op_data['op_type'] + fam_name
+        scriptOp.appendRow([
+            op_data['op_name'],
+            op_data['op_label'],
+            node_type,
+            '2',            # subtype
+            '0',            # mininputs
+            maxinputs,
+            True,           # ordering
+            '1',            # level
+            'TouchDesigner Non-Commercial',
+            str(os_compat.get('windows', 1)),
+            '3',            # score
+            fam_name,
+            opType
+        ])
 
-        all_families = list(families.keys())
-        if hasattr(op, 'FAMREGISTRY'):
-            all_families.extend(op.FAMREGISTRY.InstalledFams.keys())
-
-        if all_families:
-            # Escape names and use boundaries that handle non-word characters
-            escaped = all_families
-            regex = r'(?<!\w)(' + '|'.join(escaped) + r')(?!\w)'
-            label = re.sub(regex, lambda m: m.group(1).upper(), label, flags=re.IGNORECASE)
-        
-        node_type = types[o in generators]
-        subtype = '2'
-        mininputs = '0'
-        maxinputs = 9999 if o.name == 'composite' else len(o.inputConnectors)
-        ordering = True
-        level = '1'
-        lictype = 'TouchDesigner Non-Commercial'
-        score = '3'
-        family = fam_name
-        
-        # Get manifest OpInfo if exists
-        op_info = None
-        
-        if isinstance(o, OP) and o.isCOMP and (_manifest := o.op('FamManifest')):
-            if _opInfo := _manifest.op('OpInfo'):
-                # load json to dict
-                import json
-                op_info = json.loads(_opInfo.text)
-                
-        if op_info:
-            label = op_info.get('op_label', label)
-            op_type = op_info.get('op_type', name.lower())
-
-        for old, new in replace_index.items():
-            label = label.replace(old, new)
-
-        #opType = name.lower() + fam_name
-        opType = op_type + fam_name if op_info else name.lower() + fam_name
-        scriptOp.appendRow([name, label, node_type, subtype, mininputs, maxinputs, ordering, level, lictype, os_compat, score, family, opType])
-    
     return

@@ -1,4 +1,4 @@
-import json
+﻿import json
 import re
 from RegistryHelpers import sanitize_name, ensure_manifest_tags, apply_family_color, resolve_op_type
 
@@ -125,50 +125,98 @@ class OpManager:
 
 		return OpInfo, ParRetain, Shortcuts
 
+	def GetOpInfo(self, _op, family_owner=None):
+		"""
+		Get the most complete OpInfo dict possible for an operator.
+		Read-only — does not create or modify anything.
+
+		Reads from FamManifest/OpInfo if available, then fills fallbacks
+		from par.Version, op name, and family_owner (if provided).
+
+		Args:
+			_op: The operator to read from
+			family_owner: Optional installer comp for fam_version/op_fam fallbacks
+
+		Returns:
+			dict: op_version, fam_version, op_fam, op_type, op_name, op_label
+		"""
+		OpInfo = {}
+
+		# Read from manifest if COMP with FamManifest
+		if isinstance(_op, OP) and _op.isCOMP:
+			_manifest = _op.op('FamManifest')
+			if _manifest:
+				_opInfo_dat = _manifest.op('OpInfo')
+				if _opInfo_dat:
+					try:
+						OpInfo = json.loads(_opInfo_dat.text)
+					except:
+						pass
+
+		# Fallback: op_version from par.Version
+		if not OpInfo.get('op_version'):
+			if hasattr(_op, 'par') and _op.par['Version'] is not None:
+				OpInfo['op_version'] = str(_op.par.Version.eval())
+
+		# Fallback: fam_version and op_fam from family_owner
+		if family_owner:
+			if not OpInfo.get('fam_version') and hasattr(family_owner.par, 'Version'):
+				OpInfo['fam_version'] = str(family_owner.par.Version.eval())
+			if not OpInfo.get('op_fam') and hasattr(family_owner, 'Properties'):
+				OpInfo['op_fam'] = family_owner.Properties['family_name']
+
+		# Fallback: op_name, op_type, op_label from op.name
+		if not OpInfo.get('op_name'):
+			OpInfo['op_name'] = _op.name
+		if not OpInfo.get('op_type'):
+			OpInfo['op_type'] = _op.name
+		if not OpInfo.get('op_label'):
+			label = ' '.join(w.capitalize() for w in _op.name.split('_'))
+			OpInfo['op_label'] = self._sanitize_label(label)
+
+		return OpInfo
+
 	def _validate_OpInfo(self, family_owner, _op, manifest, tox_file_version=None, display_name=None):
 		"""
 		Check if the operator has a FamManifest and OpInfo, and add them if not.
 		"""
+		# Start from read-only info
+		OpInfo = self.GetOpInfo(_op, family_owner)
+
+		# Get or create the DAT for write-back
+		_OpInfo = None
 		if manifest:
 			_OpInfo = manifest.op('OpInfo')
 			if not _OpInfo:
 				_OpInfo = manifest.create(textDAT, 'OpInfo')
 				_OpInfo.text = "{}"
 
-			OpInfo = json.loads(_OpInfo.text)
-		else:
-			# at this point we are most likely dealing with a non-COMP operator edge case
-			OpInfo = {}
-			_OpInfo = None
+		# Override op_version with tox_file_version if provided and no manifest version
+		if tox_file_version is not None and not OpInfo.get('op_version'):
+			OpInfo['op_version'] = tox_file_version
 
-		if not (_version := OpInfo.get('op_version', None)):
-			_version = family_owner.par.Version.eval() 
-			if (_parVersion := _op.par['Version']) is not None:
-				_version = _parVersion
-			elif tox_file_version is not None:
-				_version = tox_file_version
+		# Always overwrite fam_version and op_fam
+		OpInfo['fam_version'] = str(family_owner.par.Version.eval())
+		OpInfo['op_fam'] = family_owner.Properties['family_name']
 
-			OpInfo['op_version'] = _version
+		# Override name/type/label with display_name if provided and field was a fallback
+		if display_name:
+			# Check what the manifest actually had (without fallbacks)
+			raw = {}
+			if isinstance(_op, OP) and _op.isCOMP:
+				_m = _op.op('FamManifest')
+				if _m and _m.op('OpInfo'):
+					try:
+						raw = json.loads(_m.op('OpInfo').text)
+					except:
+						pass
+			if not raw.get('op_name'):
+				OpInfo['op_name'] = display_name
+			if not raw.get('op_type'):
+				OpInfo['op_type'] = display_name
+			if not raw.get('op_label'):
+				OpInfo['op_label'] = self._sanitize_label(display_name)
 
-		# always overwrite fam_version
-		_fam_version = family_owner.par.Version.eval()
-		OpInfo['fam_version'] = _fam_version
-
-		# always overwrite op_fam
-		_op_fam = family_owner.Properties['family_name']
-		OpInfo['op_fam'] = _op_fam
-
-		if not OpInfo.get('op_name', None):
-			OpInfo['op_name'] = display_name or _op.name
-
-		if not OpInfo.get('op_type', None):
-			OpInfo['op_type'] = display_name or _op.name
-
-		if not OpInfo.get('op_label', None):
-			# we only force sanitization if we're creating the label
-			label = self._sanitize_label(display_name or _op.name)
-			OpInfo['op_label'] = label
-		
 		# sanitize
 		OpInfo['op_name'] = sanitize_name(OpInfo['op_name'])
 		OpInfo['op_type'] = sanitize_name(OpInfo['op_type'])

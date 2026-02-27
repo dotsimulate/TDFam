@@ -556,6 +556,122 @@ class OpFamRegistryExt:
 			results.append(o)
 
 		return results
+
+	def GetOperators(self, family_name):
+		"""
+		Get all available operators in a family with full metadata.
+
+		Enumerates embedded operators (from operators_comp) and file-based
+		operators (from folder_cache), reads OpInfo manifests, and merges
+		with Config data (groups, OS compat, label replacements).
+
+		Args:
+			family_name: The family name to query
+
+		Returns:
+			dict: Keyed by op_type. Each value contains:
+				op_type, op_name, op_label, op_version, fam_version,
+				op_fam, group, source, os_compatible
+		"""
+		installer = self.GetFamilyExt(family_name)
+		if not installer:
+			return {}
+
+		# Config data
+		config = installer.Config
+		group_mapping = config.get('group_mapping', {})
+		label_replacements = config.get('label_replacements', {})
+		os_incompatible = config.get('os_incompatible', {})
+		has_groups = bool(group_mapping)
+
+		# Build lookup indexes from config
+		group_index = {}
+		for group_name, operators in group_mapping.items():
+			for op_name in operators:
+				group_index[op_name.lower().replace(' ', '_')] = group_name
+
+		os_index = {}
+		for op_name, os_data in os_incompatible.items():
+			normalized = op_name.lower().replace(' ', '_')
+			os_index[normalized] = {
+				'windows': os_data.get('windows', 1),
+				'mac': os_data.get('mac', 1),
+				'exclude': os_data.get('exclude', 0),
+			}
+
+		# fam_version for file-based ops (no TD operator to read from)
+		fam_version = None
+		if hasattr(installer.ownerComp.par, 'Version'):
+			fam_version = str(installer.ownerComp.par.Version.eval())
+
+		result = {}
+		embedded_names = set()
+
+		# --- Embedded operators ---
+		custom_ops = installer.operators_comp
+		if custom_ops:
+			for _op in custom_ops.findChildren(maxDepth=1):
+				if hasattr(_op, 'par') and hasattr(_op.par, 'parentshortcut') and _op.par.parentshortcut.eval() == 'Annotate':
+					continue
+
+				op_name = _op.name
+				normalized = op_name.lower().replace(' ', '_')
+				embedded_names.add(op_name.lower())
+
+				op_info = self.OpManager.GetOpInfo(_op, installer.ownerComp)
+
+				# Apply label_replacements on top
+				op_label = op_info.get('op_label', op_name)
+				for old, new in label_replacements.items():
+					op_label = op_label.replace(old, new)
+
+				op_type = op_info.get('op_type', op_name.lower())
+				result[op_type] = {
+					'op_type': op_type,
+					'op_name': op_info.get('op_name', op_name),
+					'op_label': op_label,
+					'op_version': op_info.get('op_version'),
+					'fam_version': op_info.get('fam_version'),
+					'op_fam': op_info.get('op_fam', family_name),
+					'group': group_index.get(normalized) if has_groups else None,
+					'source': ('embedded', _op),
+					'os_compatible': os_index.get(normalized, {'windows': 1, 'mac': 1, 'exclude': 0}),
+				}
+
+		# --- File-based operators ---
+		folder_cache = installer.Properties.get('folder_cache', {})
+		if folder_cache:
+			for name, info in folder_cache.items():
+				if name.lower() in embedded_names:
+					continue
+
+				normalized = name.lower().replace(' ', '_')
+
+				op_label = ' '.join(w.capitalize() for w in name.split('_'))
+				op_label = self.OpManager._sanitize_label(op_label)
+				for old, new in label_replacements.items():
+					op_label = op_label.replace(old, new)
+
+				group = None
+				if has_groups:
+					group = group_index.get(normalized)
+					if group is None and info.get('category'):
+						group = info['category']
+
+				result[name.lower()] = {
+					'op_type': name.lower(),
+					'op_name': name,
+					'op_label': op_label,
+					'op_version': info.get('version'),
+					'fam_version': fam_version,
+					'op_fam': family_name,
+					'group': group,
+					'source': ('file', info['path']),
+					'os_compatible': os_index.get(normalized, {'windows': 1, 'mac': 1, 'exclude': 0}),
+				}
+
+		return result
+
 # endregion Operator Management
 
 # region Internal Helpers
