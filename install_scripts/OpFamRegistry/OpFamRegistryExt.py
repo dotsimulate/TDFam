@@ -605,49 +605,56 @@ class OpFamRegistryExt:
 			fam_version = str(installer.ownerComp.par.Version.eval())
 
 		result = {}
-		embedded_names = set()
 
-		# --- Embedded operators ---
+		# Collect all operator names from both sources
+		all_op_names = set()
+		embedded_ops = {}
 		custom_ops = installer.operators_comp
 		if custom_ops:
 			for _op in custom_ops.findChildren(maxDepth=1):
 				if hasattr(_op, 'par') and hasattr(_op.par, 'parentshortcut') and _op.par.parentshortcut.eval() == 'Annotate':
 					continue
+				embedded_ops[_op.name.lower()] = _op
+				all_op_names.add(_op.name.lower())
 
-				op_name = _op.name
-				normalized = op_name.lower().replace(' ', '_')
-				embedded_names.add(op_name.lower())
+		folder_cache = installer.Properties.get('folder_cache', {})
+		if folder_cache:
+			for name in folder_cache:
+				all_op_names.add(name.lower())
 
+		# Resolve each operator once via get_operator_source
+		for lookup_name in all_op_names:
+			source = self.FileManager.get_operator_source(family_name, lookup_name)
+			if not source:
+				continue
+
+			normalized = lookup_name.replace(' ', '_')
+
+			if source[0] == 'embedded':
+				_op = source[1]
 				op_info = self.OpManager.GetOpInfo(_op, installer.ownerComp)
 
-				# Apply label_replacements on top
-				op_label = op_info.get('op_label', op_name)
+				op_label = op_info.get('op_label', _op.name)
 				for old, new in label_replacements.items():
 					op_label = op_label.replace(old, new)
 
-				op_type = op_info.get('op_type', op_name.lower())
+				op_type = op_info.get('op_type', lookup_name)
 				result[op_type] = {
 					'op_type': op_type,
-					'op_name': op_info.get('op_name', op_name),
+					'op_name': op_info.get('op_name', _op.name),
 					'op_label': op_label,
 					'op_version': op_info.get('op_version'),
 					'fam_version': op_info.get('fam_version'),
 					'op_fam': op_info.get('op_fam', family_name),
 					'group': group_index.get(normalized) if has_groups else None,
-					'source': ('embedded', _op),
+					'source': source,
 					'os_compatible': os_index.get(normalized, {'windows': 1, 'mac': 1, 'exclude': 0}),
 				}
 
-		# --- File-based operators ---
-		folder_cache = installer.Properties.get('folder_cache', {})
-		if folder_cache:
-			for name, info in folder_cache.items():
-				if name.lower() in embedded_names:
-					continue
+			elif source[0] == 'file':
+				file_info = folder_cache.get(lookup_name, {})
 
-				normalized = name.lower().replace(' ', '_')
-
-				op_label = ' '.join(w.capitalize() for w in name.split('_'))
+				op_label = ' '.join(w.capitalize() for w in lookup_name.split('_'))
 				op_label = self.OpManager._sanitize_label(op_label)
 				for old, new in label_replacements.items():
 					op_label = op_label.replace(old, new)
@@ -655,18 +662,18 @@ class OpFamRegistryExt:
 				group = None
 				if has_groups:
 					group = group_index.get(normalized)
-					if group is None and info.get('category'):
-						group = info['category']
+					if group is None and file_info.get('category'):
+						group = file_info['category']
 
-				result[name.lower()] = {
-					'op_type': name.lower(),
-					'op_name': name,
+				result[lookup_name] = {
+					'op_type': lookup_name,
+					'op_name': lookup_name,
 					'op_label': op_label,
-					'op_version': info.get('version'),
+					'op_version': file_info.get('version'),
 					'fam_version': fam_version,
 					'op_fam': family_name,
 					'group': group,
-					'source': ('file', info['path']),
+					'source': source,
 					'os_compatible': os_index.get(normalized, {'windows': 1, 'mac': 1, 'exclude': 0}),
 				}
 
