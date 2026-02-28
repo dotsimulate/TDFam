@@ -39,7 +39,6 @@ class OpFamCreateExt:
             'group_mapping': {},
             'label_replacements': {},
             'os_incompatible': {},
-            'relabel_index': {},
             'settings': {},
         })
 
@@ -274,6 +273,13 @@ class OpFamCreateExt:
 
         self.fam_registry.InstallFamily(self.ownerComp)
 
+        op_fam = self.ownerComp.op('OP_fam')
+
+        # Force recook fam_create after install
+        fam_create = self.ownerComp.op('fam_create')
+        if fam_create:
+            run('args[0].cook(force=True)', fam_create, delayFrames=1, delayRef=op.TDResources)
+
     def _do_uninstall(self):
         self.fam_registry.UninstallFamily(self.ownerComp)
 
@@ -286,14 +292,16 @@ class OpFamCreateExt:
         )
 
     def _get_operators(self):
+        if not self.fam_registry:
+            return None
         return self.fam_registry.GetOperators(self.FamilyName.val)
 
     def _refresh_folder(self):
         self.fam_registry.FileManager.refresh_cache(self.FamilyName.val, self.operators_folder)
 
-        op_fam = self.ownerComp.op('OP_fam')
-        if op_fam:
-            op_fam.cook(force=True)
+        fam_create = self.ownerComp.op('fam_create')
+        if fam_create:
+            fam_create.cook(force=True)
 
     def _create_opcomp(self, name='custom_operators'):
         ui.undo.startBlock('Create Operators COMP')
