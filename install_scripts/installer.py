@@ -352,13 +352,6 @@ class OpFamCreateExt:
     def _find_stubs(self, scope=None):
         return self.fam_registry.StubManager.find_stubs(self.FamilyName.val, scope)
 
-    def _check_missing_tags(self, operators):
-        category_tags = self.fam_registry.CallHook(self.FamilyName.val, '_GetCategoryTags') or set()
-        return [
-            c for c in operators
-            if not self.fam_registry.TagManager.has_operator_type_tag(c, self.FamilyName.val, category_tags)
-        ]
-
     def _create_stub(self, comp):
         if isinstance(comp, str):
             comp = op(comp)
