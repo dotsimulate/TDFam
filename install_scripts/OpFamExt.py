@@ -334,14 +334,6 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
             ui.messageBox('No Operators', f'No {self.FamilyName.val} operators found.', buttons=['OK'])
             return
 
-        untagged = self._check_missing_tags(operators)
-        if untagged:
-            choice = ui.messageBox('Missing Tags',
-                f'{len(untagged)} operators lack type tags. Proceed anyway?',
-                buttons=['Proceed', 'Cancel'])
-            if choice != 0:
-                return
-
         choice = ui.messageBox('Create Stubs',
             f'Create stubs for {len(operators)} operator(s)?',
             buttons=['Create', 'Cancel'])
