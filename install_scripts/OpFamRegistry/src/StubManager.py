@@ -5,7 +5,8 @@ Handles creating lightweight stubs from operators and replacing them
 back with full operators. Used for performance optimization.
 """
 import re
-from RegistryHelpers import get_op_type_from_manifest, resolve_op_type, ensure_manifest_tags, apply_family_color
+import json
+from RegistryHelpers import get_op_type_from_manifest, resolve_op_type, ensure_manifest_tags, apply_family_color, get_params_to_retain, get_self_pars_to_retain
 
 class StubManager:
 	"""
@@ -121,11 +122,10 @@ class StubManager:
 		comp.store('outputs', outputs)
 
 		# Store parameters
-		# Store parameters
 		params, sequences = self._capture_params(comp)
-		
 		comp.store('params', params)
 		comp.store('sequences', sequences)
+		comp.store('children_params', children_params)
 
 		# Uncook
 		comp.allowCooking = False
@@ -143,6 +143,8 @@ class StubManager:
 		for child in comp.findChildren():
 			try:
 				rel_path = comp.relativePath(child)
+				if rel_path.startswith('./'):
+					rel_path = rel_path[2:]
 				params, sequences = self._capture_params(child)
 				if params or sequences:
 					children_data[rel_path] = {'params': params, 'sequences': sequences}
@@ -296,6 +298,15 @@ class StubManager:
 			print(f"replaceStub: No master found for type '{op_type}'")
 			return None
 
+		# Read ParRetain before rename
+		par_retain_data = {}
+		_par_retain_dat = stub_manifest.op('ParRetain') if stub_manifest else None
+		if _par_retain_dat:
+			try:
+				par_retain_data = json.loads(_par_retain_dat.text)
+			except:
+				pass
+			
 		# Rename stub to avoid name conflict
 		if not stub.name.endswith('_stub'):
 			stub.name = stub.name + '_stub'
@@ -331,13 +342,34 @@ class StubManager:
 			new_comp.name = stub.name.removesuffix('_stub')
 
 		try:
-			# Restore parameters
 			params = stub.fetch('params', {})
 			sequences = stub.fetch('sequences', {})
-			self._restore_params(new_comp, params, sequences)
-
-			# Restore children params
 			children_data = stub.fetch('children_params', {})
+
+			# Self params: default = all custom pars, filtered by '.' rules if present
+			self_key = next((k for k in ['.', ''] if k in par_retain_data), None)
+			if self_key is not None:
+				pars_to_retain = get_self_pars_to_retain(new_comp, 'stub', par_retain_data[self_key])
+			else:
+				pars_to_retain = {p.name for p in new_comp.customPars if p.page is not None}
+			filtered_params = {k: v for k, v in params.items() if k in pars_to_retain}
+			filtered_seqs = {k: v for k, v in sequences.items() if k in pars_to_retain}
+			self._restore_params(new_comp, filtered_params, filtered_seqs)
+
+			# Child params: only what's explicitly listed per key
+			all_child_paths = list(children_data.keys())
+			for key, _ in par_retain_data.items():
+				if key in ('.', ''):
+					continue
+				for child_path in tdu.match(key, all_child_paths):
+					target = new_comp.op(child_path)
+					child_stored = children_data.get(child_path, {})
+					if not target or not child_stored:
+						continue
+					child_pars_to_retain = get_params_to_retain(key, 'stub', par_retain_data, comp=target)
+					child_params = {k: v for k, v in child_stored.get('params', {}).items() if k in child_pars_to_retain}
+					child_seqs = {k: v for k, v in child_stored.get('sequences', {}).items() if k in child_pars_to_retain}
+					self._restore_params(target, child_params, child_seqs)
 
 			# Hook: PreserveSpecialParams
 			self.registry.CallHook(family_name, '_PreserveSpecialParams', new_comp, params)
@@ -355,8 +387,9 @@ class StubManager:
 
 			# Hook: PostReplace
 			self.registry.CallHook(family_name, '_PostReplace', new_comp, stub)
-		except:
-			print(f"replaceStub: Failed to replace {stub.path}")
+		except Exception as e:
+			print(f"replaceStub: Failed to replace {stub.path}: {e}")
+			#raise
 		finally:
 			# Remove stub
 			stub.destroy()

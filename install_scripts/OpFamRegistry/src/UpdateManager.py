@@ -4,7 +4,8 @@ Update system for opfam-create.
 Handles updating operators to newer versions while preserving
 connections and parameter values.
 """
-from RegistryHelpers import get_op_type_from_manifest, resolve_op_type, ensure_manifest_tags, apply_family_color
+import json
+from RegistryHelpers import get_op_type_from_manifest, resolve_op_type, ensure_manifest_tags, apply_family_color, get_params_to_retain, get_self_pars_to_retain
 
 class UpdateManager:
 	"""
@@ -133,34 +134,69 @@ class UpdateManager:
 			new_comp.activeViewer = old_comp.activeViewer
 			new_comp.viewer = old_comp.viewer
 
-			# 1. Synchronize sequences first
+			# Read ParRetain for update scenario
+			par_retain_data = {}
+			old_manifest = old_comp.op('FamManifest')
+			if old_manifest:
+				_par_retain_dat = old_manifest.op('ParRetain')
+				if _par_retain_dat:
+					try:
+						par_retain_data = json.loads(_par_retain_dat.text)
+					except:
+						pass
+
+			# Determine which top-level params to retain (None = retain all)
+			self_key = next((k for k in ['.', ''] if k in par_retain_data), None)
+			pars_to_retain = get_self_pars_to_retain(new_comp, 'update', par_retain_data[self_key]) if self_key is not None else None
+
+# 1. Synchronize sequences first
 			processed_seqs = set()
 			skip_seqs = {'ext', 'iop'}
-			
+
 			for p in new_comp.pars():
 				if hasattr(p, 'sequence') and p.sequence:
 					seq_name = p.sequence.name
 					if seq_name in skip_seqs or seq_name in processed_seqs:
 						continue
+					if pars_to_retain is not None and seq_name not in pars_to_retain:
+						continue
 					processed_seqs.add(seq_name)
-					
-					# Find matching sequence in old_comp
-					# We can't access sequences by name easily on op, so check param
+
 					old_pars = old_comp.pars(p.name)
 					if old_pars and hasattr(old_pars[0], 'sequence'):
 						p.sequence.numBlocks = old_pars[0].sequence.numBlocks
 
-			# 2. Copy all parameters (now that sequences are sized)
+			# 2. Copy top-level parameters (now that sequences are sized)
 			skip_pars = {'Version', 'Copyright', 'opshortcut', 'parentshortcut'}
 			for p in new_comp.pars():
 				if p.name in skip_pars:
 					continue
 				if hasattr(p, 'sequence') and p.sequence and p.sequence.name in skip_seqs:
 					continue
+				if pars_to_retain is not None and p.name not in pars_to_retain:
+					continue
 
 				old_pars = old_comp.pars(p.name)
 				if old_pars:
 					self._copy_par(p, old_pars[0])
+
+			# 3. Copy retained params for each child path in ParRetain
+			all_new_children = [c.name for c in new_comp.findChildren(depth=1)]
+			for key, _ in par_retain_data.items():
+				if key in ('.', ''):
+					continue
+				for child_path in tdu.match(key, all_new_children):
+					target_old = old_comp.op(child_path)
+					target_new = new_comp.op(child_path)
+					if not target_old or not target_new:
+						continue
+					child_pars = get_params_to_retain(key, 'update', par_retain_data, comp=target_new)
+					for p in target_new.pars():
+						if p.name not in child_pars:
+							continue
+						old_pars = target_old.pars(p.name)
+						if old_pars:
+							self._copy_par(p, old_pars[0])
 
 			# Ensure manifest exists on new comp (handles edge case where old op
 			# was non-COMP with no manifest but new master is a COMP)

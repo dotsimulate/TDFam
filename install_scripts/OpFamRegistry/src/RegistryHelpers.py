@@ -1,39 +1,91 @@
+import re
+
 # example_retention_data = {
-# 	"base1/noise1": {
-# 		"amp": ["update"],
-# 		"harm": ["update", "stub"]
-# 	},
-# 	"base1/noise2": "exp",
-# 	"base1/noise3": ["p1", "p2"] # Example of a list shorthand
+# 	".": ["!Period:stub", "!<About>:update", "Help"],  # self: default all custom, with exclusions
+# 	"noise1": ["<Noise>", "!harm:stub"],               # child: include Noise page, but not harm on stub
+# 	"noise2": "exp",                                   # child: just retain exp in all scenarios
 # }
 
-# # Example Usage:
-# print(get_params_to_retain("base1/noise1", "stub", retention_data))
-# # Output: ['harm'] (because 'amp' is only for 'update')
-# print(get_params_to_retain("base1/noise2", "stub", retention_data))
-# # Output: ['exp'] (shorthand implies all scenarios)
+def _parse_retain_rules(rules, scenario, comp, custom_only=False):
+	"""
+	Parse a list of retain rule strings into (inclusions, exclusions) sets.
 
-def get_params_to_retain(op_path, current_scenario, retention_data):
+	Rule syntax:
+	  "Par"           — include Par in all scenarios
+	  "Par:update"    — include Par in update scenario only
+	  "<Page>"        — include all pars on Page (requires comp)
+	  "!Par:stub"     — exclude Par in stub scenario only
+	  "!<Page>"       — exclude all pars on Page in all scenarios
+	"""
+	if isinstance(rules, str):
+		rules = [rules]
+
+	inclusions = set()
+	exclusions = set()
+
+	for item in rules:
+		is_exclude = item.startswith('!')
+		entry = item[1:] if is_exclude else item
+
+		entry_scenario = None
+		if ':' in entry:
+			entry, entry_scenario = entry.split(':', 1)
+
+		if entry_scenario is not None and entry_scenario != scenario:
+			continue
+
+		page_match = re.match(r'^<(.+)>$', entry)
+		if page_match and comp is not None:
+			page_name = page_match.group(1)
+			par_source = comp.customPars if custom_only else comp.pars()
+			matched = {p.name for p in par_source if p.page is not None and p.page.name == page_name}
+		elif comp is not None:
+			par_source = comp.customPars if custom_only else comp.pars()
+			all_names = [p.name for p in par_source if p.page is not None]
+			matched = set(tdu.match(entry, all_names))
+		else:
+			matched = {entry}
+
+		if is_exclude:
+			exclusions |= matched
+		else:
+			inclusions |= matched
+
+	return inclusions, exclusions
+
+
+def get_self_pars_to_retain(comp, scenario, rules):
+	"""
+	Retain rules for the self (.) entry.
+	Default: all custom pars. Explicit inclusions override exclusions.
+	"""
+	all_custom = {p.name for p in comp.customPars if p.page is not None}
+	inclusions, exclusions = _parse_retain_rules(rules, scenario, comp, custom_only=True)
+	return list((all_custom - exclusions) | (inclusions & all_custom))
+
+def find_retain_key(comp_path, retention_data):
+	"""
+	Find the matching key in retention_data for a comp.
+	Tries '.' and '' as self-reference aliases before the absolute path.
+
+	Returns:
+		The matched key string, or None if no entry exists.
+	"""
+	for candidate in ['.', '', comp_path]:
+		if candidate in retention_data:
+			return candidate
+	return None
+
+def get_params_to_retain(op_path, current_scenario, retention_data, comp=None):
+	"""
+	Retain rules for child op entries.
+	Default: nothing. Inclusions define what to keep, exclusions carve out exceptions.
+	"""
 	rules = retention_data.get(op_path)
 	if not rules:
 		return []
-		
-	params_to_keep = []
-	# Case A: It's a dictionary (Per-parameter scenarios)
-	if isinstance(rules, dict):
-		for par_name, scenarios in rules.items():
-			if current_scenario in scenarios:
-				params_to_keep.append(par_name)
-	# Case B: It's a String or List (Retain in ALL scenarios)
-	else:
-		# Normalize string to list
-		if isinstance(rules, str):
-			rules = [rules]
-			
-		# In this shorthand, we assume we keep them for BOTH update and stub
-		params_to_keep.extend(rules)
-		
-	return params_to_keep
+	inclusions, exclusions = _parse_retain_rules(rules, current_scenario, comp)
+	return list(inclusions - exclusions)
 
 def get_op_type_from_manifest(manifest):
 	"""Read op_type from a FamManifest's OpInfo."""
