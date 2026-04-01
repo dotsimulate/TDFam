@@ -220,8 +220,9 @@ menu_type = varTable['menu_type',1].val
 varTable['lasttype',1] = menu_type  # Default: preserve TD's decision (fixes stale state bug)
 if(lastnode and source == 'output'):
 	type = lastnode.family
+	pane_owner = ui.panes.current.owner
 	parent_comp = lastnode.parent() if lastnode else None
-	manifest = parent_comp.op('FamManifest') if parent_comp else None
+	manifest = parent_comp.op('FamManifest') if (parent_comp and parent_comp != pane_owner) else None
 	{fam_check_str}
 	varTable['lasttype',1] = type
 elif(source == 'input' and ({compatible_check})):
