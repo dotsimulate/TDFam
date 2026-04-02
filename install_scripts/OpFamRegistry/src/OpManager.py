@@ -153,10 +153,12 @@ class OpManager:
 					except:
 						pass
 
-		# Fallback: op_version from par.Version
+		# Fallback: op_version from par.Version, then family version
 		if not OpInfo.get('op_version'):
 			if hasattr(_op, 'par') and _op.par['Version'] is not None:
 				OpInfo['op_version'] = str(_op.par.Version.eval())
+			elif family_owner and hasattr(family_owner.par, 'Version'):
+				OpInfo['op_version'] = str(family_owner.par.Version.eval())
 
 		# Fallback: fam_version and op_fam from family_owner
 		if family_owner:
@@ -188,7 +190,7 @@ class OpManager:
 		if manifest:
 			_OpInfo = manifest.op('OpInfo')
 			if not _OpInfo:
-				_OpInfo = manifest.create(textDAT, 'OpInfo')
+				_OpInfo = self._create_manifest_dat(manifest, 'OpInfo')
 				_OpInfo.text = "{}"
 
 		# Override op_version with tox_file_version if provided and no manifest version
@@ -215,21 +217,27 @@ class OpManager:
 			if not raw.get('op_type'):
 				OpInfo['op_type'] = display_name
 			if not raw.get('op_label'):
-				OpInfo['op_label'] = self._sanitize_label(display_name)
+				label = ' '.join(w.capitalize() for w in display_name.split('_'))
+				OpInfo['op_label'] = self._sanitize_label(label)
 
 		# sanitize
 		OpInfo['op_name'] = sanitize_name(OpInfo['op_name'])
 		OpInfo['op_type'] = sanitize_name(OpInfo['op_type'])
 
+		# Ensure consistent key order for readability
+		_key_order = ['fam_version', 'op_version', 'op_fam', 'op_type', 'op_name', 'op_label']
+		ordered = {k: OpInfo[k] for k in _key_order if k in OpInfo}
+		ordered.update({k: v for k, v in OpInfo.items() if k not in _key_order})
+
 		if _OpInfo:
-			_OpInfo.text = json.dumps(OpInfo, indent=4)
-		return OpInfo
+			_OpInfo.text = json.dumps(ordered, indent=4)
+		return ordered
 
 	def _validate_Shortcuts(self, family_owner, _op, manifest):
 		_Shortcuts = manifest.op('Shortcuts')
 		# Create Shortcuts if it doesn't exist
 		if _Shortcuts is None:
-			_Shortcuts = manifest.create(textDAT, 'Shortcuts')
+			_Shortcuts = self._create_manifest_dat(manifest, 'Shortcuts')
 			_Shortcuts.text = {}
 		_dict = json.loads(_Shortcuts.text)
 		return _dict
@@ -238,7 +246,7 @@ class OpManager:
 		_ParRetain = manifest.op('ParRetain')
 		# Create ParRetain if it doesn't exist
 		if not _ParRetain:
-			_ParRetain = manifest.create(textDAT, 'ParRetain')
+			_ParRetain = self._create_manifest_dat(manifest, 'ParRetain')
 			_ParRetain.text = {}
 		return json.loads(_ParRetain.text)
 
@@ -253,10 +261,21 @@ class OpManager:
 		for child in opcomp.findChildren(type=COMP, maxDepth=1):
 			OpInfo, ParRetain, Shortcuts = self._validate_manifest(family_owner, child, display_name=child.name)
 			self._tag_op(family_owner, child, OpInfo)
+			self._clean_manifest_examples(child.op('FamManifest'))
 			self.registry.CallHook(family_name, '_DeployManifest', child, OpInfo, ParRetain, Shortcuts)
 			count += 1
 
 		return count
+
+	def _clean_manifest_examples(self, manifest):
+		"""Clear file/syncfile on example DATs inside a deployed manifest."""
+		if not manifest:
+			return
+		for name in ('OpInfo_example', 'ParRetain_example', 'Shortcuts_example'):
+			dat = manifest.op(name)
+			if dat and hasattr(dat.par, 'file'):
+				dat.par.file = ''
+				dat.par.syncfile = False
 
 	def _tag_op(self, family_owner, _op, OpInfo, is_manifest=True):
 		fam_name = family_owner.Properties['family_name']
@@ -329,16 +348,26 @@ class OpManager:
 
 # region start helper methods
 
+	def _create_manifest_dat(self, manifest, dat_name):
+		"""Create a manifest DAT by copying from the template to preserve position."""
+		template_manifest = self.ownerComp.op('FamManifest')
+		template_dat = template_manifest.op(dat_name) if template_manifest else None
+		if template_dat:
+			new_dat = manifest.copy(template_dat)
+		else:
+			new_dat = manifest.create(textDAT, dat_name)
+		return new_dat
+
 	def _sanitize_label(self, label):
 		all_families = list(families.keys())
 		all_families.extend(self.registry.RegisteredFams.keys())
-		
+
 		if all_families:
 			# Escape names and use boundaries that handle non-word characters
 			escaped = all_families
 			regex = r'(?<!\w)(' + '|'.join(escaped) + r')(?!\w)'
 			label = re.sub(regex, lambda m: m.group(1).upper(), label, flags=re.IGNORECASE)
-		
+
 		return label
 
 # endregion
