@@ -727,8 +727,17 @@ class OpFamRegistryExt:
 		installer = self.GetFamilyExt(fam_name)
 		if not installer or not hasattr(installer, 'DoCallback'):
 			return None
-		
+
 		return installer.DoCallback(hook_name, info)
+
+	def _get_op_type(self, comp):
+		"""Read op_type from a comp's FamManifest, or return None."""
+		if comp:
+			manifest = comp.op('FamManifest')
+			if manifest:
+				from RegistryHelpers import get_op_type_from_manifest
+				return get_op_type_from_manifest(manifest)
+		return None
 
 	def _PreInstall(self, fam_name):
 		info = {'about': 'Called before installation'}
@@ -763,7 +772,7 @@ class OpFamRegistryExt:
 		return self._dispatch_hook(fam_name, 'onPostPlaceOp', info)
 
 	def _PreStub(self, fam_name, comp):
-		info = {'comp': comp, 'about': 'Return False to skip stubbing this operator'}
+		info = {'comp': comp, 'opType': self._get_op_type(comp), 'about': 'Return False to skip stubbing this operator'}
 		result = self._dispatch_hook(fam_name, 'onPreStub', info)
 		if result:
 			result.setdefault('returnValue', True)
@@ -771,35 +780,42 @@ class OpFamRegistryExt:
 		return {'returnValue': True, 'comp': comp}
 
 	def _PostStub(self, fam_name, stub, original):
-		info = {'stub': stub, 'original': original}
+		info = {'stub': stub, 'original': original, 'opType': self._get_op_type(stub)}
 		return self._dispatch_hook(fam_name, 'onPostStub', info)
 
 	def _PreReplace(self, fam_name, stub):
-		info = {'stub': stub, 'about': 'Return False to skip replacing this stub'}
+		info = {'stub': stub, 'opType': self._get_op_type(stub), 'about': 'Return False to skip replacing this stub'}
 		result = self._dispatch_hook(fam_name, 'onPreReplace', info)
 		if result:
 			result.setdefault('returnValue', True)
 			return result
 		return {'returnValue': True, 'stub': stub}
 
-	def _PostReplace(self, fam_name, new_comp, stub):
-		info = {'newComp': new_comp, 'stub': stub}
+	def _PostReplace(self, fam_name, new_comp, stub, extra_info):
+		info = {'newComp': new_comp, 'stub': stub, 'extraInfo': extra_info, 'opType': self._get_op_type(new_comp)}
 		return self._dispatch_hook(fam_name, 'onPostReplace', info)
 
+	def _CaptureExtraInfo(self, fam_name, comp, scenario):
+		info = {'comp': comp, 'scenario': scenario, 'opType': self._get_op_type(comp), 'about': 'Return a dict of arbitrary data to preserve across stub/update'}
+		result = self._dispatch_hook(fam_name, 'onCaptureExtraInfo', info)
+		if result and result.get('returnValue') is not None:
+			return result
+		return {'returnValue': {}}
+
 	def _PreUpdate(self, fam_name, old_comp, master):
-		info = {'oldComp': old_comp, 'master': master, 'about': 'Return False to skip updating this operator'}
+		info = {'oldComp': old_comp, 'master': master, 'opType': self._get_op_type(old_comp), 'about': 'Return False to skip updating this operator'}
 		result = self._dispatch_hook(fam_name, 'onPreUpdate', info)
 		if result:
 			result.setdefault('returnValue', True)
 			return result
 		return {'returnValue': True, 'oldComp': old_comp, 'master': master}
 
-	def _PostUpdate(self, fam_name, new_comp):
-		info = {'newComp': new_comp}
+	def _PostUpdate(self, fam_name, new_comp, extra_info):
+		info = {'newComp': new_comp, 'extraInfo': extra_info, 'opType': self._get_op_type(new_comp)}
 		return self._dispatch_hook(fam_name, 'onPostUpdate', info)
 
 	def _PreserveSpecialParams(self, fam_name, new_comp, source):
-		info = {'newComp': new_comp, 'source': source}
+		info = {'newComp': new_comp, 'source': source, 'opType': self._get_op_type(new_comp)}
 		return self._dispatch_hook(fam_name, 'onPreserveSpecialParams', info)
 
 	def _GetExcludedTags(self, fam_name):
@@ -817,7 +833,7 @@ class OpFamRegistryExt:
 		return set()
 
 	def _CaptureChildrenParams(self, fam_name, comp, children_data):
-		info = {'comp': comp, 'children_data': children_data, 'about': 'Modify children_data in place'}
+		info = {'comp': comp, 'children_data': children_data, 'opType': self._get_op_type(comp), 'about': 'Modify children_data in place'}
 		return self._dispatch_hook(fam_name, 'onCaptureChildrenParams', info)
 
 # endregion Hook Integration

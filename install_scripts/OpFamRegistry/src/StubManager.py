@@ -79,6 +79,10 @@ class StubManager:
 		# Hook: CaptureChildrenParams
 		self.registry.CallHook(family_name, '_CaptureChildrenParams', comp, children_params)
 
+		# Hook: CaptureExtraInfo — developer returns a dict of arbitrary data to preserve
+		extra_info_result = self.registry.CallHook(family_name, '_CaptureExtraInfo', comp, 'stub')
+		extra_info = extra_info_result.get('returnValue', {}) if isinstance(extra_info_result, dict) else {}
+
 		# Remove all children except ins, outs, and FamManifest
 		children = comp.findChildren(depth=1)
 		input_ops = [_input.inOP for _input in comp.inputConnectors]
@@ -126,6 +130,7 @@ class StubManager:
 		comp.store('params', params)
 		comp.store('sequences', sequences)
 		comp.store('children_params', children_params)
+		comp.store('extra_info', extra_info)
 
 		# Uncook
 		comp.allowCooking = False
@@ -345,6 +350,7 @@ class StubManager:
 			params = stub.fetch('params', {})
 			sequences = stub.fetch('sequences', {})
 			children_data = stub.fetch('children_params', {})
+			extra_info = stub.fetch('extra_info', {})
 
 			# Self params: default = all custom pars, filtered by '.' rules if present
 			self_key = next((k for k in ['.', ''] if k in par_retain_data), None)
@@ -386,7 +392,7 @@ class StubManager:
 				apply_family_color(installer.ownerComp, new_comp)
 
 			# Hook: PostReplace
-			self.registry.CallHook(family_name, '_PostReplace', new_comp, stub)
+			self.registry.CallHook(family_name, '_PostReplace', new_comp, stub, extra_info)
 		except Exception as e:
 			print(f"replaceStub: Failed to replace {stub.path}: {e}")
 			#raise

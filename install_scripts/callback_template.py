@@ -8,15 +8,19 @@
 # info['lookupName'] in onPlaceOp will place a different operator.
 
 def onPreInstall(info):
+	"""Called before the family is installed into the registry."""
 	pass
 
 def onPostInstall(info):
+	"""Called after the family is installed into the registry."""
 	pass
 
 def onPreUninstall(info):
+	"""Called before the family is uninstalled from the registry."""
 	pass
 
 def onPostUninstall(info):
+	"""Called after the family is uninstalled from the registry."""
 	pass
 
 def onPlaceOp(info):
@@ -57,6 +61,32 @@ def onPreStub(info):
 	return True
 
 def onPostStub(info):
+	"""
+	Called after stubbing an operator.
+
+	info keys:
+		stub - the stub component
+		original - the original component
+	"""
+	pass
+
+def onCaptureExtraInfo(info):
+	"""
+	Called before stub/update to capture arbitrary data for later restoration.
+
+	info keys:
+		comp - the operator about to be stubbed/updated (full access)
+		scenario (str) - 'stub' or 'update'
+
+	Set info['returnValue'] to a dict of data to preserve.
+	This dict is passed as 'extraInfo' in onPostReplace/onPostUpdate.
+
+	Example:
+		# info['returnValue'] = {
+		#     'customState': info['comp'].op('state').text,
+		#     'userData': info['comp'].fetch('myData', None),
+		# }
+	"""
 	pass
 
 def onPreReplace(info):
@@ -71,6 +101,19 @@ def onPreReplace(info):
 	return True
 
 def onPostReplace(info):
+	"""
+	Called after replacing a stub with the real operator.
+
+	info keys:
+		newComp - the restored operator
+		stub - the original stub (about to be destroyed)
+		extraInfo (dict) - data captured by onCaptureExtraInfo, or {}
+
+	Example:
+		# extra = info['extraInfo']
+		# if extra.get('customState'):
+		#     info['newComp'].op('state').text = extra['customState']
+	"""
 	pass
 
 def onPreUpdate(info):
@@ -86,6 +129,18 @@ def onPreUpdate(info):
 	return True
 
 def onPostUpdate(info):
+	"""
+	Called after updating an operator to a new version.
+
+	info keys:
+		newComp - the updated operator
+		extraInfo (dict) - data captured by onCaptureExtraInfo, or {}
+
+	Example:
+		# extra = info['extraInfo']
+		# if extra.get('customState'):
+		#     info['newComp'].op('state').text = extra['customState']
+	"""
 	pass
 
 def onPreserveSpecialParams(info):
@@ -94,12 +149,35 @@ def onPreserveSpecialParams(info):
 
 	info keys:
 		newComp - the new operator
-		source - the old operator or stub
+		source - the old operator or stored params dict
+	"""
+	pass
+
+def onCaptureChildrenParams(info):
+	"""
+	Called after capturing children params during stubbing.
+	Modify children_data in place to add/remove entries.
+
+	info keys:
+		comp - the operator being stubbed
+		children_data (dict) - captured params by relative path, MODIFIABLE
 	"""
 	pass
 
 def onGetExcludedTags(info):
+	"""
+	Return a set of tag names to exclude from stub/update discovery.
+
+	Example:
+		# return {'internal', 'debug'}
+	"""
 	return set()
 
 def onGetCategoryTags(info):
+	"""
+	Return a set of category tag names for operator type resolution.
+
+	Example:
+		# return {'filter', 'generator'}
+	"""
 	return set()

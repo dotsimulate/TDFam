@@ -97,6 +97,10 @@ class UpdateManager:
 				except Exception as e:
 					return (False, f"Error loading tox {source}: {e}")
 
+			# Hook: CaptureExtraInfo — developer returns a dict of arbitrary data to preserve
+			extra_info_result = self.registry.CallHook(family_name, '_CaptureExtraInfo', old_comp, 'update')
+			extra_info = extra_info_result.get('returnValue', {}) if isinstance(extra_info_result, dict) else {}
+
 			# Hook: PreUpdate - can return False to skip, or modify master
 			pre_update = self.registry.CallHook(family_name, '_PreUpdate', old_comp, master_op)
 			if isinstance(pre_update, dict):
@@ -237,7 +241,7 @@ class UpdateManager:
 				apply_family_color(installer.ownerComp, new_comp)
 
 			# Hook: PostUpdate
-			self.registry.CallHook(family_name, '_PostUpdate', new_comp)
+			self.registry.CallHook(family_name, '_PostUpdate', new_comp, extra_info)
 
 			return (True, f"Updated {new_comp.path} (matched via {match_method})")
 
