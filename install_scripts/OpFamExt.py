@@ -371,6 +371,13 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         if callbacks_dat and hasattr(self.ownerComp.par, 'Callbackdat'):
             self.ownerComp.par.Callbackdat = callbacks_dat
 
+    def onParDeploymanifests(self):
+        if not self.fam_registry:
+            debug('Deploy Manifests: Family not registered')
+            return
+        count = self.fam_registry.OpManager.deployManifests(self.ownerComp)
+        print(f'Deploy Manifests: Deployed to {count} operator(s)')
+
     # endregion
 
     # region Helpers

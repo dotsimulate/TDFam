@@ -242,6 +242,22 @@ class OpManager:
 			_ParRetain.text = {}
 		return json.loads(_ParRetain.text)
 
+	def deployManifests(self, family_owner):
+		"""Deploy/update FamManifest on all COMPs inside the family's Opcomp."""
+		opcomp = family_owner.par.Opcomp.eval() if hasattr(family_owner.par, 'Opcomp') else None
+		if not opcomp:
+			return 0
+
+		family_name = family_owner.Properties['family_name']
+		count = 0
+		for child in opcomp.findChildren(type=COMP, maxDepth=1):
+			OpInfo, ParRetain, Shortcuts = self._validate_manifest(family_owner, child, display_name=child.name)
+			self._tag_op(family_owner, child, OpInfo)
+			self.registry.CallHook(family_name, '_DeployManifest', child, OpInfo, ParRetain, Shortcuts)
+			count += 1
+
+		return count
+
 	def _tag_op(self, family_owner, _op, OpInfo, is_manifest=True):
 		fam_name = family_owner.Properties['family_name']
 		op_type = OpInfo.get('op_type', "MISSING")

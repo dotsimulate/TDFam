@@ -164,6 +164,19 @@ def onCaptureChildrenParams(info):
 	"""
 	pass
 
+def onDeployManifest(info):
+	"""
+	Called for each operator COMP after its manifest is deployed/updated.
+
+	info keys:
+		comp - the operator COMP that received the manifest
+		opType (str) - the operator type
+		OpInfo (dict) - validated operator info
+		ParRetain (dict) - parameter retention rules
+		Shortcuts (dict) - keyboard shortcut mappings
+	"""
+	pass
+
 def onGetExcludedTags(info):
 	"""
 	Return a set of tag names to exclude from stub/update discovery.

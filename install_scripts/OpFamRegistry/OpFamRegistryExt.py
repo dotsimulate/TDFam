@@ -836,4 +836,8 @@ class OpFamRegistryExt:
 		info = {'comp': comp, 'children_data': children_data, 'opType': self._get_op_type(comp), 'about': 'Modify children_data in place'}
 		return self._dispatch_hook(fam_name, 'onCaptureChildrenParams', info)
 
+	def _DeployManifest(self, fam_name, comp, OpInfo, ParRetain, Shortcuts):
+		info = {'comp': comp, 'opType': OpInfo.get('op_type'), 'OpInfo': OpInfo, 'ParRetain': ParRetain, 'Shortcuts': Shortcuts}
+		return self._dispatch_hook(fam_name, 'onDeployManifest', info)
+
 # endregion Hook Integration
