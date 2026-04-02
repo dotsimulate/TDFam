@@ -44,7 +44,7 @@ class OpFamRegistryExt:
 			for _inst_fam in restored_installed:
 				self.InstallFamily(restored_installed[_inst_fam])
 
-			# self.ShortcutManager.rebuildShortcutDict() # TODO: we could retain registered shortcuts too!
+			self.ShortcutManager.restore()
 			self.ShortcutManager.enableShortcutDat()
 		else:
 			# Check if we're post-update
@@ -130,6 +130,7 @@ class OpFamRegistryExt:
 		new_registry.store('post_update', True)
 		new_registry.store('RegisteredFams', dict(self.ownerComp.fetch('RegisteredFams', {})))
 		new_registry.store('InstalledFams', dict(self.ownerComp.fetch('InstalledFams', {})))
+		new_registry.store('ShortcutDict', self.ownerComp.fetch('ShortcutDict', {}))
 
 		debug(f'OpFamRegistry: Copied to {new_registry.path}.')
 

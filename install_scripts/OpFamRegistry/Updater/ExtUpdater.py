@@ -336,6 +336,9 @@ class ExtUpdater:
 			if (_installed_fams := getattr(global_registry, 'InstalledFams', None)):
 				newComp.store('InstalledFams', _installed_fams)
 
+			if (_sm := getattr(global_registry, 'ShortcutManager', None)):
+				newComp.store('ShortcutDict', _sm.shortcutDict.getRaw())
+
 		old_path = oldComp.path
 		new_path = newComp.path
 		old_version = oldComp.par.Version.eval()

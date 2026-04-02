@@ -33,6 +33,7 @@ class ShortcutManager:
 			
 		_currShortcutDict[_shortcut][(_famName, _opType)] = _parName
 		self.shortcutDict = DependDict(_currShortcutDict)
+		self._persist()
 
 
 	def unregisterOpShortcutsForFamily(self, _famName):
@@ -55,6 +56,17 @@ class ShortcutManager:
 			del _currShortcutDict[_shortcut]
 
 		self.shortcutDict = DependDict(_currShortcutDict)
+		self._persist()
+
+	def _persist(self):
+		"""Store shortcutDict on ownerComp for retention across updates."""
+		self.ownerComp.store('ShortcutDict', self.shortcutDict.getRaw())
+
+	def restore(self):
+		"""Restore shortcutDict from ownerComp storage."""
+		restored = self.ownerComp.fetch('ShortcutDict', None)
+		if restored:
+			self.shortcutDict = DependDict(restored)
 
 	def onShortcut(self, shortcutName):
 		if shortcutName not in self.shortcutDict:
