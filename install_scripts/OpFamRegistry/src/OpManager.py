@@ -199,6 +199,10 @@ class OpManager:
 		OpInfo['fam_version'] = str(family_owner.par.Version.eval())
 		OpInfo['op_fam'] = family_owner.Properties['family_name']
 
+		# Persist compatible_types: keep per-operator override, else inherit family-level
+		if not OpInfo.get('compatible_types'):
+			OpInfo['compatible_types'] = list(family_owner.Properties.get('compatible_types', []))
+
 		# Override name/type/label with display_name if provided and field was a fallback
 		if display_name:
 			# Check what the manifest actually had (without fallbacks)

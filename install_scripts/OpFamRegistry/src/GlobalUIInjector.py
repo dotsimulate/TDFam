@@ -213,17 +213,39 @@ class GlobalUIInjector:
 		fam_check_str = "\n\tel".join(fam_checks)
 		mouse_check_str = "\n\t\t\tel".join(mouse_checks)
 
-		script = f'''varTable = op('local/set_variables')
+		script = f'''import json
+varTable = op('local/set_variables')
 lastnode = op(varTable['nodepath',1])
 source = varTable['source',1].val
 menu_type = varTable['menu_type',1].val
-varTable['lasttype',1] = menu_type  # Default: preserve TD's decision (fixes stale state bug)
+varTable['lasttype',1] = menu_type
 if(lastnode and source == 'output'):
 	type = lastnode.family
 	pane_owner = ui.panes.current.owner
 	parent_comp = lastnode.parent() if lastnode else None
 	manifest = parent_comp.op('FamManifest') if (parent_comp and parent_comp != pane_owner) else None
 	{fam_check_str}
+	if manifest:
+		_opinfo_dat = manifest.op('OpInfo')
+		if _opinfo_dat:
+			try:
+				_opinfo = json.loads(_opinfo_dat.text)
+				_compat = _opinfo.get('compatible_types', [])
+				if isinstance(_compat, str):
+					_compat = [t.strip() for t in (_compat.split(',') if ',' in _compat else _compat.split()) if t.strip()]
+				if _compat:
+					_ctable = op('compatible')
+					if _ctable and _ctable.row(type):
+						for _ci in range(1, _ctable.numCols):
+							_col_type = _ctable[0, _ci].val
+							if _col_type in _compat or _col_type == type or _col_type == 'COMP':
+								_ctable[type, _ci] = 'x'
+							else:
+								_ctable[type, _ci] = ''
+				if _compat and menu_type not in _compat:
+					type = menu_type
+			except:
+				pass
 	varTable['lasttype',1] = type
 elif(source == 'input' and ({compatible_check})):
 	pane = ui.panes.current
@@ -235,6 +257,17 @@ elif(source == 'input' and ({compatible_check})):
 		if (-5<(mousePos[0]-child.nodeX)*zoom<15 and child.nodeY+child.nodeHeight>mousePos[1] and mousePos[1]>child.nodeY):
 			child_manifest = child.op('FamManifest')
 			{mouse_check_str}
+			# Per-operator compatible_types override from manifest OpInfo
+			if type != menu_type and child_manifest:
+				_opinfo_dat = child_manifest.op('OpInfo')
+				if _opinfo_dat:
+					try:
+						_opinfo = json.loads(_opinfo_dat.text)
+						_compat = _opinfo.get('compatible_types', [])
+						if _compat and menu_type not in _compat:
+							type = menu_type
+					except:
+						pass
 			if type != menu_type:
 				varTable['lastnode',1] = child.name
 				varTable['nodepath',1] = child.path
