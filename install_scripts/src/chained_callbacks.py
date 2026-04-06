@@ -1,5 +1,9 @@
 """
 ChainedCallbacksExt - Extends TDCallbacksExt to call BOTH assigned and DAT callbacks.
+
+Uses lazy module loading: DAT changes only mark the cache dirty.
+The module is only re-imported when a callback actually fires.
+This prevents extension reinit cycles from getattr(dat.module, ...) on every DAT edit.
 """
 
 CallbacksExt = op.TDModules.op('TDCallbacksExt').module.CallbacksExt
@@ -11,7 +15,59 @@ class ChainedCallbacksExt(CallbacksExt):
 
     Standard CallbacksExt only calls one or the other.
     This version chains them: assigned runs first, DAT gets final say.
+
+    DAT module access is cached and only refreshed when the DAT content changes,
+    avoiding expensive getattr(dat.module, ...) calls that trigger TD recooks.
     """
+
+    def __init__(self, ownerComp):
+        # Bypass CallbacksExt.__init__ which accesses dat.module and creates
+        # a cook dependency (DAT change -> reinit extension -> infinite loop).
+        # We replicate the safe parts only.
+        self.ownerComp = ownerComp
+        self.AssignedCallbacks = {}
+        self.PassTarget = None
+        self._printCallbacks = False
+        self.shortRepr = CallbacksExt.__init__.__globals__.get('shortRepr')
+        if hasattr(ownerComp.par, 'Callbackdat'):
+            self.callbackDat = ownerComp.par.Callbackdat.eval()
+        else:
+            self.callbackDat = None
+        self._cbCache = {}
+        self._cbCacheDatId = None
+        self._cbCacheDatText = None
+
+    def _refreshCallbackCache(self):
+        """Reload the callback module cache if the DAT has changed."""
+        dat = self.callbackDat
+        if not dat:
+            if self._cbCache:
+                self._cbCache = {}
+                self._cbCacheDatId = None
+                self._cbCacheDatText = None
+            return
+
+        dat_id = dat.id
+        dat_text = dat.text
+        if dat_id == self._cbCacheDatId and dat_text == self._cbCacheDatText:
+            return
+
+        self._cbCacheDatId = dat_id
+        self._cbCacheDatText = dat_text
+        try:
+            m = dat.module
+            self._cbCache = {
+                name: getattr(m, name)
+                for name in dir(m)
+                if callable(getattr(m, name, None)) and name.startswith('on')
+            }
+        except Exception as e:
+            print(f"Error loading callback module from {dat}: {e}")
+            self._cbCache = {}
+
+    def InvalidateCallbackCache(self):
+        """Force cache refresh on next DoCallback. Call from DAT change scripts if needed."""
+        self._cbCacheDatText = None
 
     def CreateCallbackDat(self, owner, template):
         """
@@ -42,6 +98,7 @@ class ChainedCallbacksExt(CallbacksExt):
         # Dock to owner
         callbacks_dat.dock = owner
 
+        self.InvalidateCallbackCache()
         return callbacks_dat
 
     def DoCallback(self, callbackName, callbackInfo=None):
@@ -72,15 +129,14 @@ class ChainedCallbacksExt(CallbacksExt):
             except Exception as e:
                 print(f"Error in assigned callback {callbackName}: {e}")
 
-        # 2. DAT callback (user layer) - also runs, gets final say
-        dat = self.callbackDat
-        if dat:
+        # 2. DAT callback (user layer) - lazy cached lookup
+        self._refreshCallbackCache()
+        datCallback = self._cbCache.get(callbackName)
+        if datCallback:
             try:
-                datCallback = getattr(dat.module, callbackName, None)
-                if datCallback:
-                    result = datCallback(callbackInfo)
-                    callbackInfo['returnValue'] = result
-                    found_callback = True
+                result = datCallback(callbackInfo)
+                callbackInfo['returnValue'] = result
+                found_callback = True
             except Exception as e:
                 print(f"Error in DAT callback {callbackName}: {e}")
 
