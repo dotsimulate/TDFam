@@ -4,5 +4,6 @@
 	"op_fam": "FAV",
 	"op_type": "something",
 	"op_name": "some_thing",
-	"op_label": "Some Thing"
+	"op_label": "Some Thing",
+	"compatible_types" : ["CHOP", "TOP"]
 }
