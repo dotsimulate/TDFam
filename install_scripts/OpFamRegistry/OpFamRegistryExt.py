@@ -654,8 +654,10 @@ class OpFamRegistryExt:
 
 			elif source[0] == 'file':
 				file_info = folder_cache.get(lookup_name, {})
+				ext_manifest = file_info.get('manifest') or {}
+				ext_opinfo = ext_manifest.get('OpInfo', {})
 
-				op_label = ' '.join(w.capitalize() for w in lookup_name.split('_'))
+				op_label = ext_opinfo.get('op_label') or ' '.join(w.capitalize() for w in lookup_name.split('_'))
 				op_label = self.OpManager._sanitize_label(op_label)
 				for old, new in label_replacements.items():
 					op_label = op_label.replace(old, new)
@@ -667,18 +669,81 @@ class OpFamRegistryExt:
 						group = file_info['category']
 
 				result[lookup_name] = {
-					'op_type': lookup_name,
-					'op_name': lookup_name,
+					'op_type': ext_opinfo.get('op_type') or lookup_name,
+					'op_name': ext_opinfo.get('op_name') or lookup_name,
 					'op_label': op_label,
-					'op_version': file_info.get('version'),
+					'op_version': ext_opinfo.get('op_version') or file_info.get('version'),
 					'fam_version': fam_version,
 					'op_fam': family_name,
 					'group': group,
 					'source': source,
 					'os_compatible': os_index.get(normalized, {'windows': 1, 'mac': 1, 'exclude': 0}),
+					'compatible_types': ext_opinfo.get('compatible_types', []),
 				}
 
 		return result
+
+	def PlaceOp(self, family_name, target, op_type, name=None, x=None, y=None):
+		"""
+		Programmatically place an operator into a target COMP.
+		Runs the full manifest + callback chain identical to the OP Create Dialog path.
+
+		Args:
+			family_name: The family name.
+			target: The COMP to place into (OP or path string).
+			op_type: Operator type name (as shown in OP Create menu).
+			name: (Optional) Custom name for the placed operator.
+
+		Returns:
+			OP: The placed operator, or None if cancelled/failed.
+		"""
+		if isinstance(target, str):
+			target = op(target)
+		if not target or not target.isCOMP:
+			debug(f'PlaceOp: target must be a COMP, got {target}')
+			return None
+
+		if family_name not in self.InstalledFams:
+			debug(f'PlaceOp: family {family_name} is not installed')
+			return None
+
+		# Normalize lookup name
+		lookup_name = op_type.lower().replace(' ', '_')
+		display_name = op_type
+
+		# 1. Run onPlaceOp callback
+		result = self._PlaceOp(family_name, None, lookup_name)
+		if isinstance(result, dict):
+			should_place = result.get('returnValue', True)
+			lookup_name = result.get('lookupName', lookup_name)
+		else:
+			should_place = True
+
+		if should_place is False or should_place is None:
+			return None
+
+		# 2. Create clone in staging area via manageOpClone
+		clone = self.manageOpClone(family_name, lookup_name, display_name)
+		if not clone:
+			debug(f'PlaceOp: failed to create clone for {op_type}')
+			return None
+
+		# 3. Copy clone into target COMP
+		placed = target.copy(clone, name=name)
+
+		# 3b. Set position if provided
+		if x is not None:
+			placed.nodeX = x
+		if y is not None:
+			placed.nodeY = y
+
+		# 4. Clean up staging
+		clone.destroy()
+
+		# 5. Run onPostPlaceOp callback
+		self._PostPlaceOp(family_name, placed)
+
+		return placed
 
 # endregion Operator Management
 

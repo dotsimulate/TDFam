@@ -88,8 +88,13 @@ class OpManager:
 		is_file_based = source_info is not None and source_info[0] == 'file'
 		if is_file_based:
 			_, tox_file_version = self.registry.FileManager._parse_tox_info(family_owner, source_info[1])
+			# Get external manifest data from cache
+			folder_cache = family_owner.Properties.get('folder_cache', {})
+			cache_entry = folder_cache.get(opType.lower(), {})
+			external_manifest = cache_entry.get('manifest')
 		else:
 			tox_file_version = None
+			external_manifest = None
 
 		if clone.family != 'COMP':
 			# gather OpInfo without manifest to get defaults
@@ -100,7 +105,7 @@ class OpManager:
 			return clone
 		else:
 			# Validate manifest (check, or create if necessary)
-			OpInfo, ParRetain, Shortcuts = self._validate_manifest(family_owner, clone, tox_file_version=tox_file_version, display_name=display_name)
+			OpInfo, ParRetain, Shortcuts = self._validate_manifest(family_owner, clone, tox_file_version=tox_file_version, display_name=display_name, external_manifest=external_manifest)
 			self._handle_OpInfo(family_owner, clone, OpInfo=OpInfo)
 			self._handle_Shortcuts(family_owner, clone, OpInfo, Shortcuts)
 			self._tag_op(family_owner, clone, OpInfo)
@@ -112,16 +117,21 @@ class OpManager:
 
 		return clone
 
-	def _validate_manifest(self, family_owner, _op, tox_file_version=None, display_name=None):
+	def _validate_manifest(self, family_owner, _op, tox_file_version=None, display_name=None, external_manifest=None):
 		manifest = _op.op('FamManifest')
 		# Create manifest if it doesn't exist
 		if not manifest:
 			manifest_template = self.ownerComp.op('FamManifest')
 			manifest : baseCOMP =  _op.copy(manifest_template)
 
-		OpInfo = self._validate_OpInfo(family_owner, _op, manifest, tox_file_version=tox_file_version, display_name=display_name)
-		ParRetain = self._validate_ParRetain(family_owner, _op, manifest)
-		Shortcuts = self._validate_Shortcuts(family_owner, _op, manifest)
+		# External manifest data (from sidecar .json or folder manifest.json)
+		ext_opinfo = external_manifest.get('OpInfo', {}) if external_manifest else {}
+		ext_parretain = external_manifest.get('ParRetain', {}) if external_manifest else {}
+		ext_shortcuts = external_manifest.get('Shortcuts', {}) if external_manifest else {}
+
+		OpInfo = self._validate_OpInfo(family_owner, _op, manifest, tox_file_version=tox_file_version, display_name=display_name, external_opinfo=ext_opinfo)
+		ParRetain = self._validate_ParRetain(family_owner, _op, manifest, external_parretain=ext_parretain)
+		Shortcuts = self._validate_Shortcuts(family_owner, _op, manifest, external_shortcuts=ext_shortcuts)
 
 		return OpInfo, ParRetain, Shortcuts
 
@@ -178,12 +188,19 @@ class OpManager:
 
 		return OpInfo
 
-	def _validate_OpInfo(self, family_owner, _op, manifest, tox_file_version=None, display_name=None):
+	def _validate_OpInfo(self, family_owner, _op, manifest, tox_file_version=None, display_name=None, external_opinfo=None):
 		"""
 		Check if the operator has a FamManifest and OpInfo, and add them if not.
+		External opinfo (from sidecar/folder manifest) seeds values before internal manifest.
 		"""
 		# Start from read-only info
 		OpInfo = self.GetOpInfo(_op, family_owner)
+
+		# External JSON seeds values that aren't already set by internal manifest
+		if external_opinfo:
+			for k, v in external_opinfo.items():
+				if not OpInfo.get(k):
+					OpInfo[k] = v
 
 		# Get or create the DAT for write-back
 		_OpInfo = None
@@ -237,22 +254,35 @@ class OpManager:
 			_OpInfo.text = json.dumps(ordered, indent=4)
 		return ordered
 
-	def _validate_Shortcuts(self, family_owner, _op, manifest):
+	def _validate_Shortcuts(self, family_owner, _op, manifest, external_shortcuts=None):
 		_Shortcuts = manifest.op('Shortcuts')
 		# Create Shortcuts if it doesn't exist
 		if _Shortcuts is None:
-			_Shortcuts = self._create_manifest_dat(manifest, 'Shortcuts')
-			_Shortcuts.text = {}
+			_Shortcuts = manifest.create(textDAT, 'Shortcuts')
+			_Shortcuts.text = '{}'
 		_dict = json.loads(_Shortcuts.text)
+		# External shortcuts fill in keys not already defined internally
+		if external_shortcuts:
+			for k, v in external_shortcuts.items():
+				if k not in _dict:
+					_dict[k] = v
+			_Shortcuts.text = json.dumps(_dict, indent=4)
 		return _dict
 
-	def _validate_ParRetain(self, family_owner, _op, manifest):
+	def _validate_ParRetain(self, family_owner, _op, manifest, external_parretain=None):
 		_ParRetain = manifest.op('ParRetain')
 		# Create ParRetain if it doesn't exist
 		if not _ParRetain:
-			_ParRetain = self._create_manifest_dat(manifest, 'ParRetain')
-			_ParRetain.text = {}
-		return json.loads(_ParRetain.text)
+			_ParRetain = manifest.create(textDAT, 'ParRetain')
+			_ParRetain.text = '{}'
+		_dict = json.loads(_ParRetain.text)
+		# External par retain fills in keys not already defined internally
+		if external_parretain:
+			for k, v in external_parretain.items():
+				if k not in _dict:
+					_dict[k] = v
+			_ParRetain.text = json.dumps(_dict, indent=4)
+		return _dict
 
 	def deployManifests(self, family_owner):
 		"""Deploy/update FamManifest on all COMPs inside the family's Opcomp."""
