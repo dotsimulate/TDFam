@@ -405,6 +405,11 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
     # region Helpers
 
     def _update_with_ui(self, operators):
+        # Ensure master operators have manifests deployed (handles migration
+        # from old tag-based system where manifests may not exist yet)
+        if self.fam_registry:
+            self.fam_registry.OpManager.deployManifests(self.ownerComp)
+
         analysis = self._analyze_for_update(operators)
 
         if analysis['without_matches']:
