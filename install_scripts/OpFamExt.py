@@ -141,6 +141,26 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         """
         return self._get_operators()
 
+    def PlaceOp(self, target, op_type, name=None, x=None, y=None):
+        """
+        Programmatically place an operator into a target COMP.
+        Triggers the full FamManifest + callback chain (onPlaceOp, onPostPlaceOp).
+
+        Args:
+            target: The COMP to place the operator into (OP or path string).
+            op_type: Operator type name (as shown in the OP Create menu).
+            name: (Optional) Name for the placed operator.
+            x: (Optional) Node X position in the target network.
+            y: (Optional) Node Y position in the target network.
+
+        Returns:
+            OP: The placed operator, or None if placement was cancelled/failed.
+        """
+        if not self.fam_registry:
+            debug(f'PlaceOp: No registry available for {self.FamilyName.val}')
+            return None
+        return self.fam_registry.PlaceOp(self.FamilyName.val, target, op_type, name=name, x=x, y=y)
+
     def FindOps(self, type=None, name=None, path=None,
                 depth=None, maxDepth=None,
                 tags=[], allTags=False,

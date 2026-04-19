@@ -7,6 +7,7 @@ version comparison against embedded operators.
 
 import os
 import re
+import json
 
 class FileManager:
 	"""
@@ -32,6 +33,8 @@ class FileManager:
 	def refresh_cache(self, family_name, operators_folder):
 		"""
 		Scan external folder and build cache of available operators.
+		Also loads external manifest data from per-op .json sidecars
+		and folder-level manifest.json files.
 
 		Args:
 			family_name: The family name
@@ -47,34 +50,80 @@ class FileManager:
 			installer.Properties['folder_cache'] = new_cache
 			return
 
+		# Load root-level manifest.json (covers all ops as fallback)
+		root_manifest = self._load_folder_manifest(operators_folder)
+
 		for item in os.listdir(operators_folder):
 			item_path = os.path.join(operators_folder, item)
 
 			if os.path.isdir(item_path):
 				# Subfolder = category
 				category_name = item
+				cat_manifest = self._load_folder_manifest(item_path)
 				for f in os.listdir(item_path):
 					if f.endswith('.tox'):
 						name, version = self._parse_tox_info(installer, f)
 						if name:
-							new_cache[name.lower()] = {
+							key = name.lower()
+							sidecar = self._load_sidecar_json(item_path, f)
+							manifest_data = sidecar or cat_manifest.get(key) or root_manifest.get(key)
+							new_cache[key] = {
 								'path': os.path.join(item_path, f),
 								'version': version,
-								'category': category_name
+								'category': category_name,
+								'manifest': manifest_data
 							}
 
 			elif item.endswith('.tox'):
 				# Loose file = no category
 				name, version = self._parse_tox_info(installer, item)
 				if name:
-					new_cache[name.lower()] = {
+					key = name.lower()
+					sidecar = self._load_sidecar_json(operators_folder, item)
+					manifest_data = sidecar or root_manifest.get(key)
+					new_cache[key] = {
 						'path': os.path.join(operators_folder, item),
 						'version': version,
-						'category': None
+						'category': None,
+						'manifest': manifest_data
 					}
 
 		print(f"{family_name}: Folder cache refreshed - {len(new_cache)} operators found")
 		installer.Properties['folder_cache'] = new_cache
+
+	def _load_folder_manifest(self, folder_path):
+		"""
+		Load a manifest.json from a folder. Keys are normalized op names.
+
+		Returns:
+			dict: keyed by op name, values are {OpInfo, ParRetain, Shortcuts}
+		"""
+		manifest_path = os.path.join(folder_path, 'manifest.json')
+		if os.path.isfile(manifest_path):
+			try:
+				with open(manifest_path, 'r') as f:
+					return json.load(f)
+			except Exception as e:
+				print(f"Error loading {manifest_path}: {e}")
+		return {}
+
+	def _load_sidecar_json(self, folder_path, tox_filename):
+		"""
+		Load a per-op sidecar JSON file matching a .tox filename.
+		e.g. cook_bar_v0.1.1.tox -> cook_bar_v0.1.1.json
+
+		Returns:
+			dict: {OpInfo, ParRetain, Shortcuts} or None
+		"""
+		json_filename = tox_filename[:-4] + '.json'
+		json_path = os.path.join(folder_path, json_filename)
+		if os.path.isfile(json_path):
+			try:
+				with open(json_path, 'r') as f:
+					return json.load(f)
+			except Exception as e:
+				print(f"Error loading sidecar {json_path}: {e}")
+		return None
 
 	def _parse_tox_info(self, installer, filename):
 		"""
