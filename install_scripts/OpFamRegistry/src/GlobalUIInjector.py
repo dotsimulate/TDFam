@@ -25,8 +25,7 @@ class GlobalUIInjector:
 			# 2. Global (Rebuild/Refresh)
 			self._setup_global_inject_script()
 			self._setup_global_panel_execute()
-			self._update_family_eval(self.menu_op.op('eval2'))
-			self._update_family_eval(self.nodeTable.op('eval4'))
+			self.update_family_evals()
 			self._setup_last_node_type()
 			self._modify_launch_menu()
 			self._modify_create_node()
@@ -75,8 +74,7 @@ class GlobalUIInjector:
 					compatibleTable.deleteCol(family_name)
 
 			# 2. Global Refresh (rebuilds scripts without this family)
-			self._update_family_eval(self.menu_op.op('eval2'))
-			self._update_family_eval(self.nodeTable.op('eval4'))
+			self.update_family_evals()
 			self._update_colors_table()
 
 			# Update and cleanup global scripts
@@ -129,18 +127,23 @@ class GlobalUIInjector:
 			debug(f"Error checking if family {family_name} is installed: {e}")
 			return False
 
+	def update_family_evals(self):
+		self._update_family_eval(self.menu_op.op('eval2'))
+		self._update_family_eval(self.nodeTable.op('eval4'))
 
 	def _update_family_eval(self, op_to_update):
 		"""Update eval expression to include all installed families."""
 		if not op_to_update:
 			return
 
-		_expr = "[x for x in families.keys()]"
+		_expr = "[n for _, n, _ in sorted([(i, k, True) for i, k in enumerate(families.keys())]"
 		if self.owner.InstalledFams:
 			_expr += " + ["
-			for fam_name in self.owner.InstalledFams.keys():
-				_expr += f"'{fam_name}', "
+			for fam_name, fam_owner in self.owner.InstalledFams.items():
+				idx = fam_owner.Properties['index']
+				_expr += f"({idx}, '{fam_name}', False), "
 			_expr += "]"
+		_expr += ", key=lambda x: (x[0], x[2], x[1]))]"
 
 		op_to_update.par.expr = _expr
 
@@ -597,8 +600,7 @@ elif(source == 'input' and ({compatible_check})):
 						break
 
 			# 3. Global Refresh (rebuilds scripts with new name)
-			self._update_family_eval(self.menu_op.op('eval2'))
-			self._update_family_eval(self.nodeTable.op('eval4'))
+			self.update_family_evals()
 			self._update_colors_table()
 			self._setup_last_node_type()
 			self._modify_create_node()

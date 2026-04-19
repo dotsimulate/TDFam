@@ -221,6 +221,8 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
 
     def onParIndex(self):
         self.Properties['index'] = int(self.ownerComp.par.Index.eval())
+        self.fam_registry.UpdateFamilyIndexOrder()
+        
 
     def onParOpcomp(self):
         self.Properties['operators_comp'] = self.ownerComp.par.Opcomp.eval()

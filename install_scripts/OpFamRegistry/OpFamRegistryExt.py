@@ -431,6 +431,9 @@ class OpFamRegistryExt:
 		
 		return True
 
+	def UpdateFamilyIndexOrder(self):
+		self.global_ui_injector.update_family_evals()
+
 	def onRegistryChangeCallback(self, cells, prev):
 		"""This checks deletion of family owners for deregistration."""
 		for idx, _cell in enumerate(cells):
