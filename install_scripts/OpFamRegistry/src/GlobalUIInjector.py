@@ -18,7 +18,7 @@ class GlobalUIInjector:
 		"""Install all required UI injections for a new family"""
 		try:
 			# 1. Per-family (Incremental)
-			self._update_compatible_table(family_name, family_owner)
+			self.update_compatible_table(family_name, family_owner)
 			self._update_colors_table(family_name, family_owner)
 			self._set_owner_colors(family_owner)
 			
@@ -478,7 +478,7 @@ elif(source == 'input' and ({compatible_check})):
 		# Ensure it listens to the correct panel (likely /ui/dialogs/menu_op)
 		# Usually it watches its parent.
 
-	def _update_compatible_table(self, family_name, family_owner):
+	def update_compatible_table(self, family_name, family_owner):
 		"""Update compatible table with family entries."""
 		compatibleTable = self.menu_op.op('compatible')
 		if not compatibleTable:
@@ -513,23 +513,30 @@ elif(source == 'input' and ({compatible_check})):
 			else:
 				col_entry.append('')
 
-		# Add row and column
-		if not compatibleTable.rows(family_name):
+		# Add or update row
+		existing_rows = compatibleTable.rows(family_name)
+		if existing_rows:
+			row_idx = existing_rows[0][0].row
+			for col_idx, val in enumerate(row_entry):
+				compatibleTable[row_idx, col_idx] = val
+		else:
 			compatibleTable.appendRow(row_entry)
-		if not compatibleTable.cols(family_name):
+
+		# Add or update column
+		existing_cols = compatibleTable.cols(family_name)
+		if existing_cols:
+			col_idx = existing_cols[0][0].col
+			for row_idx, val in enumerate(col_entry):
+				compatibleTable[row_idx, col_idx] = val
+		else:
 			compatibleTable.appendCol(col_entry)
 
 		# Set self-compatibility
 		try:
-			# Find row in first column
 			row_cells = compatibleTable.findCells(family_name, cols=[0])
-			# Find col in first row
 			col_cells = compatibleTable.findCells(family_name, rows=[0])
-			
 			if row_cells and col_cells:
-				row_idx = row_cells[0].row
-				col_idx = col_cells[0].col
-				compatibleTable[row_idx, col_idx] = 'x'
+				compatibleTable[row_cells[0].row, col_cells[0].col] = 'x'
 		except Exception as e:
 			debug(f"Error setting self-compatibility: {e}")
 

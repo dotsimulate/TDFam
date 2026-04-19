@@ -431,8 +431,19 @@ class OpFamRegistryExt:
 		
 		return True
 
-	def UpdateFamilyIndexOrder(self):
+	def UpdateFamilyIndexOrder(self, family_name, family_owner):
+		if not self.ValidateFamilyOwner(family_name, family_owner):
+			debug(f'UpdateFamilyIndexOrder ignored: owner mismatch for {family_name}')
+			return False
 		self.global_ui_injector.update_family_evals()
+		return True
+
+	def UpdateCompatibleTable(self, family_name, family_owner):
+		if not self.ValidateFamilyOwner(family_name, family_owner):
+			debug(f'updateCompatibleTable ignored: owner mismatch for {family_name}')
+			return False
+		self.global_ui_injector.update_compatible_table(family_name, family_owner)
+		return True
 
 	def onRegistryChangeCallback(self, cells, prev):
 		"""This checks deletion of family owners for deregistration."""

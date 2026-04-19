@@ -43,7 +43,6 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
             if self.operators_folder and not self.dynamic_refresh and self.fam_registry:
                 self.fam_registry.FileManager.refresh_cache(self.Properties['family_name'], self.operators_folder)
 
-            run('args[0]._update_compatible_types_menu()', self, delayFrames=1)
 
     def _sync_parameters(self):
         p = self.ownerComp.par
@@ -262,6 +261,8 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         self.Properties['compatible_types'] = self._parse_compatible_types(
             self.ownerComp.par.Compatibletypes.eval()
         )
+        if self.fam_registry:        
+            self.fam_registry.UpdateCompatibleTable(self.ownerComp.par.Family.eval(), self.ownerComp)
 
     def _parse_compatible_types(self, value):
         """Parse space or comma-separated compatible types string into list."""
@@ -274,15 +275,6 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
             items = value.split()
         return [t.strip() for t in items if t.strip()]
 
-    def _update_compatible_types_menu(self):
-        """Update Compatibletypes parameter menu with TD families + registered custom families."""
-        if not hasattr(self.ownerComp.par, 'Compatibletypes'):
-            return
-        td = [x for x in families.keys()]
-        custom = [x for x in self.fam_registry.GetAllFamilies().keys()] if self.fam_registry else []
-        menu = td + custom
-        self.ownerComp.par.Compatibletypes.menuNames = menu
-        self.ownerComp.par.Compatibletypes.menuLabels = menu
 
     def onParCreateopcomp(self):
         comp, existing = self._create_opcomp()
