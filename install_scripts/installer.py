@@ -343,11 +343,8 @@ class OpFamCreateExt:
 
     # region Stubs
 
-    def _find_family_operators(self, scope=None):
-        return self.fam_registry.FindOps(self.FamilyName.val, network=scope)
-
-    def _find_ops(self, **kwargs):
-        return self.fam_registry.FindOps(self.FamilyName.val, **kwargs)
+    def _find_family_operators(self, scope=None, include_stubs=True):
+        return self.fam_registry.FindOps(self.FamilyName.val, network=scope, include_stubs=include_stubs)
 
     def _find_stubs(self, scope=None):
         return self.fam_registry.StubManager.find_stubs(self.FamilyName.val, scope)

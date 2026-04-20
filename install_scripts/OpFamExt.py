@@ -165,7 +165,7 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
                 tags=[], allTags=False,
                 parValue=None, parExpr=None, parName=None,
                 key=None,
-                include_stubs=False, network=None):
+                include_stubs=True, network=None):
         """
         Find placed operators of this family. Mirrors TD's findChildren API.
 
@@ -178,13 +178,7 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         Returns:
             list: Matching placed family operators
         """
-        return self._find_ops(
-            type=type, name=name, path=path,
-            depth=depth, maxDepth=maxDepth,
-            tags=tags, allTags=allTags,
-            parValue=parValue, parExpr=parExpr, parName=parName,
-            key=key, include_stubs=include_stubs, network=network
-        )
+        return self.fam_registry.FindOps(self.FamilyName.val, **kwargs)
 
     def StubOp(self, comp):
         """Create a lightweight stub from a placed operator.
@@ -240,7 +234,7 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
 
     def onParIndex(self):
         self.Properties['index'] = int(self.ownerComp.par.Index.eval())
-        self.fam_registry.UpdateFamilyIndexOrder()
+        self.fam_registry.UpdateFamilyIndexOrder(self.Properties['family_name'], self.ownerComp)
         
 
     def onParOpcomp(self):
@@ -316,7 +310,7 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         comp = self.ownerComp.par.Targetcomp.eval()
         if not comp:
             return
-        operators = self._find_family_operators(comp)
+        operators = self._find_family_operators(comp, include_stubs=False)
         if not operators:
             ui.messageBox('No Operators', f'No {self.FamilyName.val} operators found.', buttons=['OK'])
             return
@@ -343,7 +337,7 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         self._update_with_ui(operators)
 
     def onParCreatestuball(self):
-        operators = self._find_family_operators()
+        operators = self._find_family_operators(include_stubs=False)
         if not operators:
             ui.messageBox('No Operators', f'No {self.FamilyName.val} operators found.', buttons=['OK'])
             return

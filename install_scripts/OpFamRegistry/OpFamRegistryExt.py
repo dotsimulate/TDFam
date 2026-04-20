@@ -7,6 +7,7 @@ from UpdateManager import UpdateManager
 from FileManager import FileManager
 from OpManager import OpManager
 from ShortcutManager import ShortcutManager
+from RegistryHelpers import get_op_type_from_manifest
 
 class OpFamRegistryExt:
 	def __init__(self, ownerComp):
@@ -470,7 +471,7 @@ class OpFamRegistryExt:
 			   tags=[], allTags=False,
 			   parValue=None, parExpr=None, parName=None,
 			   key=None,
-			   include_stubs=False, network=None):
+			   include_stubs=True, network=None):
 		"""
 		Find placed operators of a family. Mirrors TD's findChildren API.
 
@@ -814,7 +815,6 @@ class OpFamRegistryExt:
 		if comp:
 			manifest = comp.op('FamManifest')
 			if manifest:
-				from RegistryHelpers import get_op_type_from_manifest
 				return get_op_type_from_manifest(manifest)
 		return None
 
