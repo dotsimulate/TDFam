@@ -176,21 +176,3 @@ def onDeployManifest(info):
 		Shortcuts (dict) - keyboard shortcut mappings
 	"""
 	pass
-
-def onGetExcludedTags(info):
-	"""
-	Return a set of tag names to exclude from stub/update discovery.
-
-	Example:
-		# return {'internal', 'debug'}
-	"""
-	return set()
-
-def onGetCategoryTags(info):
-	"""
-	Return a set of category tag names for operator type resolution.
-
-	Example:
-		# return {'filter', 'generator'}
-	"""
-	return set()

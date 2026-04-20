@@ -294,7 +294,7 @@ class OpFamCreateExt:
     def _get_operators(self):
         if not self.fam_registry:
             return None
-        return self.fam_registry.GetOperators(self.FamilyName.val)
+        return self.fam_registry.GetMasterOps(self.FamilyName.val)
 
     def _refresh_folder(self):
         self.fam_registry.FileManager.refresh_cache(self.FamilyName.val, self.operators_folder)
@@ -343,8 +343,8 @@ class OpFamCreateExt:
 
     # region Stubs
 
-    def _find_family_operators(self, scope=None, include_stubs=True):
-        return self.fam_registry.FindOps(self.FamilyName.val, network=scope, include_stubs=include_stubs)
+    def _find_family_operators(self, scope=None, include_stubs=True, type=None):
+        return self.fam_registry.FindOps(self.FamilyName.val, network=scope, include_stubs=include_stubs, type=type)
 
     def _find_stubs(self, scope=None):
         return self.fam_registry.StubManager.find_stubs(self.FamilyName.val, scope)

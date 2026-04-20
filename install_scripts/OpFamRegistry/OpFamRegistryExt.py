@@ -7,7 +7,7 @@ from UpdateManager import UpdateManager
 from FileManager import FileManager
 from OpManager import OpManager
 from ShortcutManager import ShortcutManager
-from RegistryHelpers import get_op_type_from_manifest
+from RegistryHelpers import get_op_type_from_manifest, resolve_op_type
 
 class OpFamRegistryExt:
 	def __init__(self, ownerComp):
@@ -475,12 +475,14 @@ class OpFamRegistryExt:
 		"""
 		Find placed operators of a family. Mirrors TD's findChildren API.
 
-		Phase 1: Find all FamManifest COMPs tagged <FAM:name> + <MANIFEST>.
+		Phase 1a: Find all FamManifest COMPs tagged <FAM:name> + <MANIFEST>.
+		Phase 1b: Find legacy-tagged ops (family_name + <FAM>) without manifests.
 		Phase 2: Post-filter parent operators with findChildren-style params.
 
 		Args:
 			family_name: The family name to search for
-			type: Filter by TD OP type (e.g. COMP, TOP)
+			type: Filter by op_type string (e.g. 'suspect'). Resolved via
+				manifest OpInfo / <TYPE:> tag / legacy {name}{family_name} tag.
 			name: Filter by name pattern (fnmatch, e.g. 'agent*')
 			path: Filter by path pattern (fnmatch)
 			depth: Exact depth relative to network root
@@ -490,7 +492,7 @@ class OpFamRegistryExt:
 			parValue: Filter ops with a parameter matching this value
 			parExpr: Filter ops with a parameter matching this expression
 			parName: Parameter name to check for parValue/parExpr filters
-			key: Custom filter function â€” key(op) must return True to include
+			key: Custom filter function — key(op) must return True to include
 			include_stubs: If True, include stubbed operators in results
 			network: Root component to search from (defaults to /)
 
@@ -505,36 +507,66 @@ class OpFamRegistryExt:
 
 		search_root = network or op('/')
 
-		# Phase 1: Find all manifests for this family
+		def _excluded(o):
+			if o == installer.ownerComp:
+				return True
+			if installer.ownerComp.path in o.path:
+				return True
+			if installer.operators_comp and installer.operators_comp.path in o.path:
+				return True
+			return False
+
+		# Phase 1a: Find all manifested ops for this family
 		manifests = search_root.findChildren(
 			type=COMP,
 			tags=[f'<FAM:{family_name}>', '<MANIFEST>'],
 			allTags=True,
 		)
 
-		# Collect parent operators with standard exclusions
 		operators = []
+		seen = set()
 		for m in manifests:
 			parent_op = m.parent()
-			if not parent_op:
+			if not parent_op or parent_op in seen:
 				continue
 			if not include_stubs and '<STUB>' in m.tags:
 				continue
-			if parent_op == installer.ownerComp:
+			if _excluded(parent_op):
 				continue
-			if installer.ownerComp.path in parent_op.path:
-				continue
-			if installer.operators_comp and installer.operators_comp.path in parent_op.path:
-				continue
+			seen.add(parent_op)
 			operators.append((parent_op, m))
+
+		# Phase 1b: Find legacy tag-based ops (no manifest deployed).
+		# Legacy signature: plain `family_name` tag + `{type}{family_name}` tag on the comp.
+		# If type was specified, require the exact type tag; otherwise require any
+		# {X}{family_name} tag (excluding the plain family_name tag itself).
+		legacy_tag_filter = [family_name, f'{type}{family_name}'] if type is not None else [family_name]
+		legacy_ops = search_root.findChildren(
+			type=COMP,
+			tags=legacy_tag_filter,
+			allTags=True,
+		)
+		for o in legacy_ops:
+			if o in seen:
+				continue
+			if _excluded(o):
+				continue
+			if type is None:
+				# Confirm a {type}{family_name} tag exists (distinct from plain family_name)
+				if not any(t.endswith(family_name) and t != family_name for t in o.tags):
+					continue
+			seen.add(o)
+			operators.append((o, None))
 
 		# Phase 2: Apply findChildren-style filters
 		results = []
 		root_depth = search_root.path.rstrip('/').count('/')
 
 		for o, manifest in operators:
-			if type is not None and not isinstance(o, type):
-				continue
+			if type is not None:
+				resolved_type, _ = resolve_op_type(o, family_name, self.TagManager)
+				if resolved_type != type:
+					continue
 
 			if name is not None and not _fnmatch.fnmatch(o.name, name):
 				continue
@@ -550,7 +582,9 @@ class OpFamRegistryExt:
 					continue
 
 			if tags:
-				combined_tags = set(o.tags) | set(manifest.tags)
+				combined_tags = set(o.tags)
+				if manifest is not None:
+					combined_tags |= set(manifest.tags)
 				if allTags:
 					if not all(t in combined_tags for t in tags):
 						continue
@@ -573,7 +607,7 @@ class OpFamRegistryExt:
 
 		return results
 
-	def GetOperators(self, family_name):
+	def GetMasterOps(self, family_name):
 		"""
 		Get all available operators in a family with full metadata.
 
@@ -622,7 +656,9 @@ class OpFamRegistryExt:
 
 		result = {}
 
-		# Collect all operator names from both sources
+		# Collect all operator types from both sources. Use resolve_op_type() which
+		# tries (in order): manifest OpInfo JSON -> manifest <TYPE:> tag ->
+		# comp's own <TYPE:> tag -> legacy {name}{family_name} suffix tag -> comp.name.
 		all_op_names = set()
 		embedded_ops = {}
 		custom_ops = installer.operators_comp
@@ -630,12 +666,23 @@ class OpFamRegistryExt:
 			for _op in custom_ops.findChildren(maxDepth=1):
 				if hasattr(_op, 'par') and hasattr(_op.par, 'parentshortcut') and _op.par.parentshortcut.eval() == 'Annotate':
 					continue
+				# Primary: full resolver chain (manifest JSON -> TYPE tag -> legacy tags)
+				resolved_type, _ = resolve_op_type(_op, family_name, self.TagManager)
+				if resolved_type:
+					all_op_names.add(resolved_type.lower())
+				# Fallback: op instance name
 				embedded_ops[_op.name.lower()] = _op
 				all_op_names.add(_op.name.lower())
 
+
 		folder_cache = installer.Properties.get('folder_cache', {})
 		if folder_cache:
-			for name in folder_cache:
+			for name, file_info in folder_cache.items():
+				# Primary: op_type from external manifest's OpInfo
+				ext_opinfo = (file_info.get('manifest') or {}).get('OpInfo', {})
+				if ext_opinfo.get('op_type'):
+					all_op_names.add(ext_opinfo['op_type'].lower())
+				# Fallback: folder_cache key (parsed from tox filename)
 				all_op_names.add(name.lower())
 
 		# Resolve each operator once via get_operator_source
@@ -896,20 +943,6 @@ class OpFamRegistryExt:
 	def _PreserveSpecialParams(self, fam_name, new_comp, source):
 		info = {'newComp': new_comp, 'source': source, 'opType': self._get_op_type(new_comp)}
 		return self._dispatch_hook(fam_name, 'onPreserveSpecialParams', info)
-
-	def _GetExcludedTags(self, fam_name):
-		info = {'about': 'Return a set of tag names to exclude'}
-		result = self._dispatch_hook(fam_name, 'onGetExcludedTags', info)
-		if result and result.get('returnValue') is not None:
-			return result['returnValue']
-		return set()
-
-	def _GetCategoryTags(self, fam_name):
-		info = {'about': 'Return a set of category tag names'}
-		result = self._dispatch_hook(fam_name, 'onGetCategoryTags', info)
-		if result and result.get('returnValue') is not None:
-			return result['returnValue']
-		return set()
 
 	def _CaptureChildrenParams(self, fam_name, comp, children_data):
 		info = {'comp': comp, 'children_data': children_data, 'opType': self._get_op_type(comp), 'about': 'Modify children_data in place'}

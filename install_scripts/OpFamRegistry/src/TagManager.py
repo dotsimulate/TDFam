@@ -71,14 +71,13 @@ class TagManager:
 		self.ensure_type_tags(family_name, pattern=pattern)
 
 
-	def get_operator_type(self, comp, family_name, category_tags=None):
+	def get_operator_type(self, comp, family_name):
 		"""
 		Check if a component has a proper operator type tag and return it.
 
 		Args:
 			comp: The component to check
 			family_name: The family name
-			category_tags: Optional set of category tags
 
 		Returns:
 			str: The operator type string if found, None otherwise
@@ -91,20 +90,16 @@ class TagManager:
 			for tag in manifest.tags:
 				if match := type_regex.match(tag):
 					return match.group(1)
-			
+
 		# Check for tags on the component itself (e.g. for non-COMP or file-based overrides)
 		if f'<FAM:{family_name}>' in comp.tags:
 			for tag in comp.tags:
 				if match := type_regex.match(tag):
 					return match.group(1)
 
-		if category_tags:
-			for tag in comp.tags:
-				if tag not in category_tags:
-					return tag
-		else:
-			for tag in comp.tags:
-				if tag.endswith(family_name) and tag != family_name:
-					return tag.removesuffix(family_name)
-		
+		# Legacy {type}{family_name} suffix pattern (tags live on comp itself)
+		for tag in comp.tags:
+			if tag.endswith(family_name) and tag != family_name:
+				return tag.removesuffix(family_name)
+
 		return sanitize_name(comp.name)

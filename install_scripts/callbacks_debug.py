@@ -56,12 +56,3 @@ def onPreserveSpecialParams(info):
     debug(f"[onPreserveSpecialParams] newComp={info['newComp']} source={info['source']}")
     debug(info)
 
-def onGetExcludedTags(info):
-    debug("[onGetExcludedTags]")
-    debug(info)
-    return set()
-
-def onGetCategoryTags(info):
-    debug("[onGetCategoryTags]")
-    debug(info)
-    return set()

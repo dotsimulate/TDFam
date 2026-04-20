@@ -68,8 +68,7 @@ class StubManager:
 
 		name = comp.name
 		manifest = comp.op('FamManifest')
-		category_tags = self.registry._GetCategoryTags(family_name) or set()
-		op_type, _ = resolve_op_type(comp, family_name, self.registry.TagManager, category_tags)
+		op_type, _ = resolve_op_type(comp, family_name, self.registry.TagManager)
 
 		print(f"createStub: Creating stub for {comp.path} with type '{op_type}'")
 
@@ -499,16 +498,10 @@ class StubManager:
 			allTags=True,
 		)
 
-		excluded_tags = self.registry._GetExcludedTags(family_name) or set()
-		excluded_lower = {t.lower() for t in excluded_tags}
-
 		stubs = []
 		for m in manifests:
 			parent_op = m.parent()
 			if not parent_op:
-				continue
-			op_type = parent_op.fetch('op_type', '')
-			if op_type.lower() in excluded_lower:
 				continue
 			stubs.append(parent_op)
 		return stubs

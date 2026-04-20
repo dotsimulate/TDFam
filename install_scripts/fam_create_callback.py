@@ -1,7 +1,7 @@
 # me - this DAT
 # scriptOp - the OP which is cooking
 # FAM CREATE CALLBACK
-# Builds the operator family menu from GetOperators() API + menu-specific formatting
+# Builds the operator family menu from GetMasterOps() API + menu-specific formatting
 
 def onSetupParameters(scriptOp):
     return
@@ -27,7 +27,7 @@ def onCook(scriptOp):
     scriptOp.appendRow(['name','label','type','subtype','mininputs','maxinputs','ordering','level','lictype','os','score','family','opType'])
 
     # Get all operator data from the API
-    all_ops = installer_comp.GetOperators()
+    all_ops = installer_comp.GetMasterOps()
     if not all_ops:
         return
 
