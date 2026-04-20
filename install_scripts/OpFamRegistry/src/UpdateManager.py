@@ -5,7 +5,7 @@ Handles updating operators to newer versions while preserving
 connections and parameter values.
 """
 import json
-from RegistryHelpers import get_op_type_from_manifest, resolve_op_type, ensure_manifest_tags, apply_family_color, get_params_to_retain, get_self_pars_to_retain
+from RegistryHelpers import get_op_type_from_manifest, resolve_op_type, ensure_manifest_tags, apply_family_color, get_params_to_retain, get_self_pars_to_retain, capture_state_retain, restore_state_retain
 
 class UpdateManager:
 	"""
@@ -79,6 +79,13 @@ class UpdateManager:
 		if not installer:
 			return (False, f"Family {family_name} not found")
 
+		manifest = old_comp.op('FamManifest')
+		if manifest and '<STUB>' in manifest.tags:
+			original_path = old_comp.path
+			old_comp = self.registry.StubManager.replace_stub(family_name, old_comp)
+			if not old_comp:
+				return (False, f"Failed to unstub {original_path}")
+
 		source_type, source, match_method = self.find_matching_master(family_name, old_comp)
 		if not source:
 			return (False, f"Couldn't update {old_comp.path}, no matching master found")
@@ -100,6 +107,19 @@ class UpdateManager:
 			# Hook: CaptureExtraInfo — developer returns a dict of arbitrary data to preserve
 			extra_info_result = self.registry.CallHook(family_name, '_CaptureExtraInfo', old_comp, 'update')
 			extra_info = extra_info_result.get('returnValue', {}) if isinstance(extra_info_result, dict) else {}
+
+			# Capture StateRetain data before old_comp is destroyed
+			state_retain_captured = {}
+			old_manifest = old_comp.op('FamManifest')
+			if old_manifest:
+				_state_retain_dat = old_manifest.op('StateRetain')
+				if _state_retain_dat:
+					try:
+						state_retain_data = json.loads(_state_retain_dat.text)
+						if state_retain_data:
+							state_retain_captured = capture_state_retain(old_comp, state_retain_data, 'update')
+					except:
+						pass
 
 			# Hook: PreUpdate - can return False to skip, or modify master
 			pre_update = self.registry.CallHook(family_name, '_PreUpdate', old_comp, master_op)
@@ -212,6 +232,10 @@ class UpdateManager:
 				self.registry.OpManager._tag_op(installer.ownerComp, new_comp, OpInfo)
 			else:
 				ensure_manifest_tags(new_comp, family_name, is_manifest=False)
+
+			# Restore StateRetain data
+			if state_retain_captured:
+				restore_state_retain(new_comp, state_retain_captured)
 
 			# Hook: PreserveSpecialParams
 			self.registry.CallHook(family_name, '_PreserveSpecialParams', new_comp, old_comp)
