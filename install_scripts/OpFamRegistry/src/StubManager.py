@@ -6,7 +6,7 @@ back with full operators. Used for performance optimization.
 """
 import re
 import json
-from RegistryHelpers import get_op_type_from_manifest, resolve_op_type, ensure_manifest_tags, apply_family_color, get_params_to_retain, get_self_pars_to_retain
+from RegistryHelpers import get_op_type_from_manifest, resolve_op_type, ensure_manifest_tags, apply_family_color, get_params_to_retain, get_self_pars_to_retain, capture_state_retain, restore_state_retain
 
 class StubManager:
 	"""
@@ -83,6 +83,18 @@ class StubManager:
 		extra_info_result = self.registry.CallHook(family_name, '_CaptureExtraInfo', comp, 'stub')
 		extra_info = extra_info_result.get('returnValue', {}) if isinstance(extra_info_result, dict) else {}
 
+		# Capture StateRetain data before children are destroyed
+		state_retain_captured = {}
+		if manifest:
+			_state_retain_dat = manifest.op('StateRetain')
+			if _state_retain_dat:
+				try:
+					state_retain_data = json.loads(_state_retain_dat.text)
+					if state_retain_data:
+						state_retain_captured = capture_state_retain(comp, state_retain_data, 'stub')
+				except:
+					pass
+
 		# Remove all children except ins, outs, and FamManifest
 		children = comp.findChildren(depth=1)
 		input_ops = [_input.inOP for _input in comp.inputConnectors]
@@ -131,6 +143,7 @@ class StubManager:
 		comp.store('sequences', sequences)
 		comp.store('children_params', children_params)
 		comp.store('extra_info', extra_info)
+		comp.store('state_retain_data', state_retain_captured)
 
 		# Uncook
 		comp.allowCooking = False
@@ -376,6 +389,11 @@ class StubManager:
 					child_params = {k: v for k, v in child_stored.get('params', {}).items() if k in child_pars_to_retain}
 					child_seqs = {k: v for k, v in child_stored.get('sequences', {}).items() if k in child_pars_to_retain}
 					self._restore_params(target, child_params, child_seqs)
+
+			# Restore StateRetain data
+			state_retain_captured = stub.fetch('state_retain_data', {})
+			if state_retain_captured:
+				restore_state_retain(new_comp, state_retain_captured)
 
 			# Hook: PreserveSpecialParams
 			self.registry.CallHook(family_name, '_PreserveSpecialParams', new_comp, params)

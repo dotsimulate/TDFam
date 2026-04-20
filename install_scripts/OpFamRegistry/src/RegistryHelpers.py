@@ -169,6 +169,172 @@ def apply_family_color(family_owner, comp):
 	if hasattr(family_owner.par, 'Colorfileops') and family_owner.par.Colorfileops.eval():
 		comp.color = (family_owner.par.Colorr.eval(), family_owner.par.Colorg.eval(), family_owner.par.Colorb.eval())
 
+def _filter_keys_by_rules(available_keys, rules, scenario):
+	"""
+	Filter a list of string keys using retain rules.
+	Same syntax as ParRetain: wildcards, !exclusions, :scenario suffixes.
+	Returns the set of keys to retain.
+	"""
+	if isinstance(rules, str):
+		rules = [rules]
+
+	inclusions = set()
+	exclusions = set()
+
+	for item in rules:
+		is_exclude = item.startswith('!')
+		entry = item[1:] if is_exclude else item
+
+		entry_scenario = None
+		if ':' in entry:
+			entry, entry_scenario = entry.split(':', 1)
+
+		if entry_scenario is not None and entry_scenario != scenario:
+			continue
+
+		matched = set(tdu.match(entry, list(available_keys)))
+
+		if is_exclude:
+			exclusions |= matched
+		else:
+			inclusions |= matched
+
+	return inclusions - exclusions
+
+
+def _resolve_targets(comp, comp_path):
+	"""
+	Resolve a comp-relative path to a list of (resolved_path, target_op) tuples.
+	'.' returns the comp itself. Wildcards match immediate children.
+	"""
+	if comp_path in ('.', ''):
+		return [('.', comp)]
+
+	child_names = [c.name for c in comp.findChildren(depth=1)]
+	matched = tdu.match(comp_path, child_names)
+	return [(name, comp.op(name)) for name in matched if comp.op(name)]
+
+
+def capture_state_retain(comp, state_retain_data, scenario):
+	"""
+	Capture non-parameter state from a comp based on StateRetain rules.
+
+	Args:
+		comp: The component to capture state from
+		state_retain_data: Parsed StateRetain JSON dict
+		scenario: 'stub' or 'update'
+
+	Returns:
+		dict keyed by resolved comp path with extensions/storage/dats data
+	"""
+	captured = {}
+
+	for comp_path, rules in state_retain_data.items():
+		targets = _resolve_targets(comp, comp_path)
+
+		for resolved_path, target in targets:
+			entry = {}
+
+			# Extensions
+			ext_rules = rules.get('extensions', {})
+			if ext_rules:
+				ext_data = {}
+				for ext_class, key_rules in ext_rules.items():
+					storage_key = ext_class + 'Stored'
+					raw_dict = target.fetch(storage_key, None)
+					if raw_dict is None:
+						continue
+					raw = raw_dict.getRaw() if hasattr(raw_dict, 'getRaw') else dict(raw_dict)
+					filtered_keys = _filter_keys_by_rules(raw.keys(), key_rules, scenario)
+					if filtered_keys:
+						ext_data[storage_key] = {k: raw[k] for k in filtered_keys}
+				if ext_data:
+					entry['extensions'] = ext_data
+
+			# Raw storage
+			storage_rules = rules.get('storage', [])
+			if storage_rules:
+				all_storage_keys = [k for k in target.storage.keys()
+									if not k.endswith('Stored')]
+				filtered_keys = _filter_keys_by_rules(all_storage_keys, storage_rules, scenario)
+				storage_data = {}
+				for key in filtered_keys:
+					storage_data[key] = target.fetch(key, None)
+				if storage_data:
+					entry['storage'] = storage_data
+
+			# DATs
+			dat_rules = rules.get('dats', [])
+			if dat_rules:
+				child_names = [c.name for c in target.findChildren(depth=1)]
+				filtered_names = _filter_keys_by_rules(child_names, dat_rules, scenario)
+				dat_data = {}
+				for dat_name in filtered_names:
+					dat_op = target.op(dat_name)
+					if not dat_op:
+						continue
+					if dat_op.isTable:
+						dat_data[dat_name] = {
+							'type': 'table',
+							'rows': [[dat_op[r, c].val for c in range(dat_op.numCols)]
+									 for r in range(dat_op.numRows)]
+						}
+					elif dat_op.isText:
+						dat_data[dat_name] = {
+							'type': 'text',
+							'text': dat_op.text
+						}
+				if dat_data:
+					entry['dats'] = dat_data
+
+			if entry:
+				captured[resolved_path] = entry
+
+	return captured
+
+
+def restore_state_retain(comp, captured_data):
+	"""
+	Restore non-parameter state to a comp from captured StateRetain data.
+
+	Args:
+		comp: The component to restore state to
+		captured_data: Dict from capture_state_retain()
+	"""
+	for resolved_path, entry in captured_data.items():
+		if resolved_path in ('.', ''):
+			target = comp
+		else:
+			target = comp.op(resolved_path)
+		if not target:
+			continue
+
+		# Extensions — update existing DependDict rather than replacing it
+		for storage_key, filtered_dict in entry.get('extensions', {}).items():
+			existing = target.fetch(storage_key, None)
+			if existing is not None and hasattr(existing, 'getRaw'):
+				for k, v in filtered_dict.items():
+					existing[k] = v
+			else:
+				target.store(storage_key, filtered_dict)
+
+		# Raw storage
+		for key, value in entry.get('storage', {}).items():
+			target.store(key, value)
+
+		# DATs
+		for dat_name, dat_info in entry.get('dats', {}).items():
+			dat_op = target.op(dat_name)
+			if not dat_op:
+				continue
+			if dat_info['type'] == 'table' and dat_op.isTable:
+				dat_op.clear()
+				for row in dat_info['rows']:
+					dat_op.appendRow(row)
+			elif dat_info['type'] == 'text' and dat_op.isText:
+				dat_op.text = dat_info['text']
+
+
 def sanitize_name(name, base=True):
 	if base:
 		name = tdu.base(name)

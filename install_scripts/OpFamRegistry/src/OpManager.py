@@ -132,6 +132,7 @@ class OpManager:
 		OpInfo = self._validate_OpInfo(family_owner, _op, manifest, tox_file_version=tox_file_version, display_name=display_name, external_opinfo=ext_opinfo)
 		ParRetain = self._validate_ParRetain(family_owner, _op, manifest, external_parretain=ext_parretain)
 		Shortcuts = self._validate_Shortcuts(family_owner, _op, manifest, external_shortcuts=ext_shortcuts)
+		self._validate_StateRetain(family_owner, _op, manifest)
 
 		return OpInfo, ParRetain, Shortcuts
 
@@ -268,6 +269,13 @@ class OpManager:
 					_dict[k] = v
 			_Shortcuts.text = json.dumps(_dict, indent=4)
 		return _dict
+
+	def _validate_StateRetain(self, family_owner, _op, manifest):
+		_StateRetain = manifest.op('StateRetain')
+		if not _StateRetain:
+			_StateRetain = manifest.create(textDAT, 'StateRetain')
+			_StateRetain.text = '{}'
+		return json.loads(_StateRetain.text)
 
 	def _validate_ParRetain(self, family_owner, _op, manifest, external_parretain=None):
 		_ParRetain = manifest.op('ParRetain')
