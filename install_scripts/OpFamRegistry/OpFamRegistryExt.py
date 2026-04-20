@@ -632,8 +632,6 @@ class OpFamRegistryExt:
 		group_mapping = config.get('group_mapping', {})
 		label_replacements = config.get('label_replacements', {})
 		os_incompatible = config.get('os_incompatible', {})
-		has_groups = bool(group_mapping)
-
 		# Build lookup indexes from config
 		group_index = {}
 		for group_name, operators in group_mapping.items():
@@ -709,7 +707,7 @@ class OpFamRegistryExt:
 					'op_version': op_info.get('op_version'),
 					'fam_version': op_info.get('fam_version'),
 					'op_fam': op_info.get('op_fam', family_name),
-					'group': group_index.get(normalized) if has_groups else None,
+					'group': op_info.get('op_group') or group_index.get(normalized) or None,
 					'source': source,
 					'os_compatible': os_index.get(normalized, {'windows': 1, 'mac': 1, 'exclude': 0}),
 				}
@@ -724,11 +722,9 @@ class OpFamRegistryExt:
 				for old, new in label_replacements.items():
 					op_label = op_label.replace(old, new)
 
-				group = None
-				if has_groups:
-					group = group_index.get(normalized)
-					if group is None and file_info.get('category'):
-						group = file_info['category']
+				group = ext_opinfo.get('op_group') or group_index.get(normalized)
+				if group is None and file_info.get('category'):
+					group = file_info['category']
 
 				result[lookup_name] = {
 					'op_type': ext_opinfo.get('op_type') or lookup_name,
