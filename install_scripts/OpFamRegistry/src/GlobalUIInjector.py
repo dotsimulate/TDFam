@@ -135,6 +135,32 @@ class GlobalUIInjector:
 		self._update_family_eval(self.menu_op.op('eval2'))
 		self._update_family_eval(self.nodeTable.op('eval4'))
 
+	def refresh_after_deploy(self, family_name=None):
+		"""
+		Rebuild UI state that reflects manifest contents (op labels, search words,
+		compatible table, family evals). Call after deployManifests so the
+		op-create dialog, search, etc. pick up fresh OpInfo values.
+		"""
+		try:
+			# Refresh family eval DATs (drives op-create families list)
+			self.update_family_evals()
+
+			# Force-cook the central inject script so its output reflects fresh labels
+			inject_op = self.nodeTable.op('inject_opfam_registry')
+			if inject_op:
+				inject_op.cook(force=True)
+			families_op = self.nodeTable.op('families')
+			if families_op:
+				families_op.cook(force=True)
+
+			# Per-family refresh
+			if family_name and family_name in self.owner.InstalledFams:
+				family_owner = self.owner.InstalledFams[family_name]
+				self.update_compatible_table(family_name, family_owner)
+				self._update_colors_table(family_name, family_owner)
+		except Exception as e:
+			debug(f'refresh_after_deploy error: {e}')
+
 	def _update_family_eval(self, op_to_update):
 		"""Update eval expression to include all installed families."""
 		if not op_to_update:

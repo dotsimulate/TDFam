@@ -190,21 +190,45 @@ class OpManager:
 
 		return OpInfo
 
+	def _apply_opinfo_rules(self, opinfo, family_owner, fallback_name=None, tox_file_version=None):
+		"""
+		Canonical OpInfo validation rules, shared by in-TD (_validate_OpInfo) and on-disk
+		(_buildDiskManifest) code paths.
+		- `fam_version` and `op_fam`: always overwritten from family_owner (authoritative).
+		- `op_version`: filled from `tox_file_version` only if missing.
+		- `compatible_types`: filled from family only if missing.
+		- `op_name` / `op_type` / `op_label`: filled from `fallback_name` only if missing.
+		  `op_name`/`op_type` are sanitized when generated from the fallback; existing user
+		  values are left untouched.
+		Returns the opinfo dict with keys in canonical order.
+		"""
+		opinfo['fam_version'] = str(family_owner.par.Version.eval())
+		opinfo['op_fam'] = family_owner.Properties['family_name']
+
+		if 'op_version' not in opinfo and tox_file_version is not None:
+			opinfo['op_version'] = tox_file_version
+		if fallback_name:
+			if 'op_name' not in opinfo:
+				opinfo['op_name'] = sanitize_name(fallback_name)
+			if 'op_type' not in opinfo:
+				opinfo['op_type'] = sanitize_name(fallback_name)
+			if 'op_label' not in opinfo:
+				label = ' '.join(w.capitalize() for w in fallback_name.split('_'))
+				opinfo['op_label'] = self._sanitize_label(label)
+
+		_key_order = ['fam_version', 'op_version', 'op_fam', 'op_type', 'op_name', 'op_label']
+		ordered = {k: opinfo[k] for k in _key_order if k in opinfo}
+		ordered.update({k: v for k, v in opinfo.items() if k not in _key_order})
+		return ordered
+
 	def _validate_OpInfo(self, family_owner, _op, manifest, tox_file_version=None, display_name=None, external_opinfo=None):
 		"""
-		Check if the operator has a FamManifest and OpInfo, and add them if not.
-		External opinfo (from sidecar/folder manifest) seeds values before internal manifest.
+		Persist OpInfo for an in-TD op. The manifest DAT's current text is the source
+		of truth — every existing field (including custom ones like search_words) is
+		preserved. Only `fam_version` / `op_fam` are overwritten, and missing required
+		fields are filled from fallbacks.
 		"""
-		# Start from read-only info
-		OpInfo = self.GetOpInfo(_op, family_owner)
-
-		# External JSON seeds values that aren't already set by internal manifest
-		if external_opinfo:
-			for k, v in external_opinfo.items():
-				if not OpInfo.get(k):
-					OpInfo[k] = v
-
-		# Get or create the DAT for write-back
+		# 1. Manifest DAT for write-back — ensure it exists
 		_OpInfo = None
 		if manifest:
 			_OpInfo = manifest.op('OpInfo')
@@ -212,44 +236,43 @@ class OpManager:
 				_OpInfo = self._create_manifest_dat(manifest, 'OpInfo')
 				_OpInfo.text = "{}"
 
-		# Override op_version with tox_file_version if provided and no manifest version
-		if tox_file_version is not None and not OpInfo.get('op_version'):
-			OpInfo['op_version'] = tox_file_version
+		# 2. Current on-manifest values are the source of truth for existing fields
+		current = {}
+		if _OpInfo:
+			try:
+				current = json.loads(_OpInfo.text)
+				if not isinstance(current, dict):
+					current = {}
+			except Exception as e:
+				print(f"_validate_OpInfo[{_op.path}]: OpInfo DAT text failed to parse as JSON ({e}); starting from empty. Raw text:\n{_OpInfo.text[:300]}")
+				current = {}
 
-		# Always overwrite fam_version and op_fam
-		OpInfo['fam_version'] = str(family_owner.par.Version.eval())
-		OpInfo['op_fam'] = family_owner.Properties['family_name']
+		# 3. External seeds only fill values NOT already present in the manifest
+		if external_opinfo:
+			for k, v in external_opinfo.items():
+				if k not in current:
+					current[k] = v
 
-		# Only persist compatible_types if explicitly declared (external manifest or internal DAT)
-		# Do NOT auto-inherit family-level defaults into per-operator OpInfo
+		# 4. If the manifest has no op_version yet, pull from par.Version then family
+		if 'op_version' not in current:
+			if hasattr(_op, 'par') and _op.par['Version'] is not None:
+				current['op_version'] = str(_op.par.Version.eval())
+			elif hasattr(family_owner.par, 'Version'):
+				current['op_version'] = str(family_owner.par.Version.eval())
 
-		# Override name/type/label with display_name if provided and field was a fallback
-		if display_name:
-			# Check what the manifest actually had (without fallbacks)
-			raw = {}
-			if isinstance(_op, OP) and _op.isCOMP:
-				_m = _op.op('FamManifest')
-				if _m and _m.op('OpInfo'):
-					try:
-						raw = json.loads(_m.op('OpInfo').text)
-					except:
-						pass
-			if not raw.get('op_name'):
-				OpInfo['op_name'] = display_name
-			if not raw.get('op_type'):
-				OpInfo['op_type'] = display_name
-			if not raw.get('op_label'):
-				label = ' '.join(w.capitalize() for w in display_name.split('_'))
-				OpInfo['op_label'] = self._sanitize_label(label)
+		# 5. Canonical validation rules (overwrites fam_version/op_fam, fills missing)
+		ordered = self._apply_opinfo_rules(
+			current, family_owner,
+			fallback_name=display_name or _op.name,
+			tox_file_version=tox_file_version,
+		)
 
-		# sanitize
-		OpInfo['op_name'] = sanitize_name(OpInfo['op_name'])
-		OpInfo['op_type'] = sanitize_name(OpInfo['op_type'], base=False)
+		# 6. In-TD forces sanitized op_name/op_type (strict for TD naming)
+		ordered['op_name'] = sanitize_name(ordered['op_name'])
+		ordered['op_type'] = sanitize_name(ordered['op_type'], base=False)
 
-		# Ensure consistent key order for readability
-		_key_order = ['fam_version', 'op_version', 'op_fam', 'op_type', 'op_name', 'op_label']
-		ordered = {k: OpInfo[k] for k in _key_order if k in OpInfo}
-		ordered.update({k: v for k, v in OpInfo.items() if k not in _key_order})
+		# 7. Unwrap TD Dependency / DependList so json.dumps doesn't loop
+		ordered = self._unwrap_for_json(ordered)
 
 		if _OpInfo:
 			_OpInfo.text = json.dumps(ordered, indent=4)
@@ -267,7 +290,7 @@ class OpManager:
 			for k, v in external_shortcuts.items():
 				if k not in _dict:
 					_dict[k] = v
-			_Shortcuts.text = json.dumps(_dict, indent=4)
+			_Shortcuts.text = json.dumps(self._unwrap_for_json(_dict), indent=4)
 		return _dict
 
 	def _validate_StateRetain(self, family_owner, _op, manifest, external_stateretain=None):
@@ -295,25 +318,217 @@ class OpManager:
 			for k, v in external_parretain.items():
 				if k not in _dict:
 					_dict[k] = v
-			_ParRetain.text = json.dumps(_dict, indent=4)
+			_ParRetain.text = json.dumps(self._unwrap_for_json(_dict), indent=4)
 		return _dict
 
 	def deployManifests(self, family_owner):
-		"""Deploy/update FamManifest on all COMPs inside the family's Opcomp."""
-		opcomp = family_owner.par.Opcomp.eval() if hasattr(family_owner.par, 'Opcomp') else None
-		if not opcomp:
-			return 0
-
+		"""Deploy/update FamManifest on all COMPs inside the family's Opcomp, plus on-disk sidecars."""
 		family_name = family_owner.Properties['family_name']
 		count = 0
-		for child in opcomp.findChildren(type=COMP, maxDepth=1):
-			OpInfo, ParRetain, Shortcuts = self._validate_manifest(family_owner, child, display_name=child.name)
-			self._tag_op(family_owner, child, OpInfo)
-			self._clean_manifest_examples(child.op('FamManifest'))
-			self.registry.CallHook(family_name, '_DeployManifest', child, OpInfo, ParRetain, Shortcuts)
-			count += 1
+
+		opcomp = family_owner.par.Opcomp.eval() if hasattr(family_owner.par, 'Opcomp') else None
+		if opcomp:
+			for child in opcomp.findChildren(type=COMP, maxDepth=1):
+				OpInfo, ParRetain, Shortcuts = self._validate_manifest(family_owner, child, display_name=child.name)
+				self._tag_op(family_owner, child, OpInfo)
+				self._clean_manifest_examples(child.op('FamManifest'))
+				self.registry.CallHook(family_name, '_DeployManifest', child, OpInfo, ParRetain, Shortcuts)
+				count += 1
+
+		count += self.deployManifestsToDisk(family_owner)
+
+		# Re-read external manifest JSONs (sidecars + folder manifests) so edits
+		# made on disk are picked up. refresh_cache rebuilds the search-words
+		# cache at the end; fall back to embedded-only rebuild if no folder.
+		operators_folder = family_owner.Properties.get('operators_folder')
+		if not operators_folder and hasattr(family_owner.par, 'Opfolder'):
+			operators_folder = family_owner.par.Opfolder.eval()
+		import os
+		if operators_folder and os.path.isdir(operators_folder):
+			self.registry.FileManager.refresh_cache(family_name, operators_folder)
+		else:
+			self.registry.FileManager.refresh_search_words_cache(family_name)
+
+		# Force-cook fam_create so OP_fam rebuilds from fresh manifest data (labels, types, etc.)
+		fam_create = family_owner.op('fam_create')
+		if fam_create:
+			fam_create.cook(force=True)
+
+		# Let the op-create dialog / menu / search pick up fresh labels & metadata
+		self.registry.global_ui_injector.refresh_after_deploy(family_name)
+		return count
+
+	def _unwrap_for_json(self, obj, seen=None):
+		"""Recursively convert TD Dependable/DependList/DependDict to plain Python, with cycle detection."""
+		if obj is None or isinstance(obj, (str, int, float, bool)):
+			return obj
+		if seen is None:
+			seen = set()
+		if id(obj) in seen:
+			return str(obj)
+		seen.add(id(obj))
+		# Plain dict first (fast path + prevents falling into list branch on failure)
+		if isinstance(obj, dict):
+			return {str(k): self._unwrap_for_json(v, seen) for k, v in obj.items()}
+		if isinstance(obj, (list, tuple)):
+			return [self._unwrap_for_json(v, seen) for v in obj]
+		# Dependency wrapper — unwrap via .val, but only once and with cycle guard
+		if hasattr(obj, 'val'):
+			try:
+				v = obj.val
+				if id(v) not in seen and v is not obj:
+					return self._unwrap_for_json(v, seen)
+			except Exception:
+				pass
+		# DependDict-like
+		if hasattr(obj, 'items') and callable(getattr(obj, 'items', None)):
+			try:
+				return {str(k): self._unwrap_for_json(v, seen) for k, v in obj.items()}
+			except Exception:
+				return str(obj)
+		# DependList-like (must come after dict checks so we don't iterate a dict's keys)
+		if hasattr(obj, '__iter__'):
+			try:
+				return [self._unwrap_for_json(v, seen) for v in obj]
+			except Exception:
+				return str(obj)
+		return str(obj)
+
+	def deployManifestsToDisk(self, family_owner):
+		"""
+		Validate/update per-op manifest definitions on disk. Rules:
+		- Never create new files or new entries — only update existing ones.
+		- Priority: per-op sidecar JSON (next to .tox) > folder manifest.json (category folder > root).
+		- Preserve every field already on disk; only rewrite OpInfo.
+		Reads disk state fresh on every call — does NOT rely on folder_cache in Properties
+		(which can contain stale values between edits and the next refresh).
+		"""
+		import os
+		family_name = family_owner.Properties['family_name']
+		operators_folder = None
+
+		if not operators_folder:
+			operators_folder = family_owner.Properties.get('operators_folder')
+		if not operators_folder and hasattr(family_owner.par, 'Opfolder'):
+			operators_folder = family_owner.par.Opfolder.eval()
+		if not operators_folder or not os.path.isdir(operators_folder):
+			# No Opfolder set, or it doesn't exist — family has no file-based ops. Normal.
+			return 0
+
+		fm = self.registry.FileManager
+		pattern_name_parser = fm._parse_tox_info
+
+		# Discover every .tox in the folder tree (one level of category subdirs, like refresh_cache)
+		tox_entries = []  # list of (lookup_name, tox_path, version, tox_dir)
+		for item in os.listdir(operators_folder):
+			item_path = os.path.join(operators_folder, item)
+			if os.path.isdir(item_path):
+				for f in os.listdir(item_path):
+					if f.endswith('.tox'):
+						name, version = pattern_name_parser(family_owner, f)
+						if name:
+							tox_entries.append((name.lower(), os.path.join(item_path, f), version, item_path))
+			elif item.endswith('.tox'):
+				name, version = pattern_name_parser(family_owner, item)
+				if name:
+					tox_entries.append((name.lower(), os.path.join(operators_folder, item), version, operators_folder))
+
+		if not tox_entries:
+			print(f"deployManifestsToDisk: no .tox files under {operators_folder}")
+			return 0
+
+		count = 0
+		skipped = 0
+
+		# Batch folder-manifest writes so a file with multiple updated ops is only written once
+		folder_writes = {}  # path -> full dict (loaded fresh from disk)
+
+		for lookup_name, tox_path, version, tox_dir in tox_entries:
+			cache_entry = {'version': version}
+
+			# Priority 1: existing sidecar — load fresh, update, write back
+			sidecar_path = tox_path[:-4] + '.json'
+			if os.path.isfile(sidecar_path):
+				try:
+					with open(sidecar_path, 'r') as f:
+						existing_manifest = json.load(f)
+				except Exception as e:
+					print(f"deployManifestsToDisk: error reading {sidecar_path}: {e}")
+					skipped += 1
+					continue
+				validated = self._buildDiskManifest(family_owner, lookup_name, cache_entry, existing_manifest)
+				try:
+					json_str = json.dumps(self._unwrap_for_json(validated), indent=4)
+				except Exception as e:
+					print(f"deployManifestsToDisk: serialization failed for {lookup_name}: {e}")
+					continue
+				try:
+					with open(sidecar_path, 'w') as f:
+						f.write(json_str)
+					count += 1
+				except Exception as e:
+					print(f"deployManifestsToDisk: error writing {sidecar_path}: {e}")
+				continue
+
+			# Priority 2: folder manifest.json (category folder, then root) containing this key
+			key = lookup_name.lower()
+			candidates = [os.path.join(tox_dir, 'manifest.json')]
+			if os.path.abspath(tox_dir) != os.path.abspath(operators_folder):
+				candidates.append(os.path.join(operators_folder, 'manifest.json'))
+
+			for path in candidates:
+				if not os.path.isfile(path):
+					continue
+				if path not in folder_writes:
+					try:
+						with open(path, 'r') as f:
+							folder_writes[path] = json.load(f)
+					except Exception as e:
+						print(f"deployManifestsToDisk: error reading {path}: {e}")
+						continue
+				if key in folder_writes[path]:
+					# Use the just-loaded entry (fresh) as the existing_manifest source
+					entry_manifest = folder_writes[path][key] if isinstance(folder_writes[path][key], dict) else {}
+					validated = self._buildDiskManifest(family_owner, lookup_name, cache_entry, entry_manifest)
+					folder_writes[path][key] = validated
+					count += 1
+					break
+			# If neither a sidecar nor a matching folder-manifest entry exists, skip silently.
+
+		# Flush batched folder-manifest updates
+		for path, data in folder_writes.items():
+			try:
+				json_str = json.dumps(self._unwrap_for_json(data), indent=4)
+			except Exception as e:
+				print(f"deployManifestsToDisk: serialization failed for {path}: {e}")
+				continue
+			try:
+				with open(path, 'w') as f:
+					f.write(json_str)
+			except Exception as e:
+				print(f"deployManifestsToDisk: error writing {path}: {e}")
+
+		# Refresh in-memory cache so downstream readers see the updated disk state
+		if count:
+			self.registry.FileManager.refresh_cache(family_name, operators_folder)
 
 		return count
+
+	def _buildDiskManifest(self, family_owner, lookup_name, cache_entry, existing_manifest):
+		"""
+		Build the validated per-op manifest dict for on-disk writes.
+		Applies the shared OpInfo rules, preserving every other top-level key
+		(ParRetain, Shortcuts, any user-added fields) untouched.
+		"""
+		existing_opinfo = dict(existing_manifest.get('OpInfo', {}))
+		ordered_opinfo = self._apply_opinfo_rules(
+			existing_opinfo, family_owner,
+			fallback_name=lookup_name,
+			tox_file_version=cache_entry.get('version'),
+		)
+		result = dict(existing_manifest)
+		result['OpInfo'] = ordered_opinfo
+		return result
 
 	def _clean_manifest_examples(self, manifest):
 		"""Clear file/syncfile on example DATs inside a deployed manifest."""

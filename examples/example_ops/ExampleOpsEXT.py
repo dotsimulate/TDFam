@@ -76,6 +76,8 @@ class ExampleOpsEXT(OpFamCreateExt):
 
         # Read family name from parameter (like ChatInstallerEXT pattern)
         family_name = ownerComp.par.Family.eval()
+        if not family_name:
+            return
         debug(f'Family name from par.Family: {family_name}')
 
         # Current theme

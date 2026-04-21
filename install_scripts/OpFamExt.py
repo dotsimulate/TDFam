@@ -15,7 +15,7 @@ Available Callbacks (implement in par.Callbackdat):
     Placement:      onPlaceOp, onPostPlaceOp
     Stubs:          onPreStub, onPostStub, onPreReplace, onPostReplace
     Updates:        onPreUpdate, onPostUpdate, onPreserveSpecialParams
-    Configuration:  onGetExcludedTags, onGetCategoryTags, onCaptureChildrenParams
+    Configuration:  onCaptureChildrenParams
 """
 
 OpFamCreateExt = mod('installer').OpFamCreateExt
@@ -117,7 +117,7 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         success, message = self._import_config(source)
         return success, message
 
-    def GetOperatorSource(self, lookup_name: str):
+    def GetOpSource(self, lookup_name: str):
         """
         Get operator source for a given name.
 
@@ -129,7 +129,7 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         """
         return self._get_operator_source(lookup_name)
 
-    def GetOperators(self):
+    def GetMasterOps(self):
         """
         Get all available operators in this family with full metadata.
 
@@ -171,14 +171,22 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
 
         Examples:
             installer.FindOps(name='agent*')
-            installer.FindOps(type=COMP, key=lambda o: o.par.Version.eval() > '1.0')
+            installer.FindOps(type='suspect', key=lambda o: o.par.Version.eval() > '1.0')
             installer.FindOps(parName='Version', parValue='2.0.0')
             installer.FindOps(network=op('/project1'), maxDepth=2)
 
         Returns:
             list: Matching placed family operators
         """
-        return self.fam_registry.FindOps(self.FamilyName.val, **kwargs)
+        return self.fam_registry.FindOps(
+            self.FamilyName.val,
+            type=type, name=name, path=path,
+            depth=depth, maxDepth=maxDepth,
+            tags=tags, allTags=allTags,
+            parValue=parValue, parExpr=parExpr, parName=parName,
+            key=key,
+            include_stubs=include_stubs, network=network,
+        )
 
     def StubOp(self, comp):
         """Create a lightweight stub from a placed operator.
@@ -211,12 +219,19 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
 
     def onParFamily(self):
         new_name = self.ownerComp.par.Family.eval()
-        if self.fam_registry:
-            # The registry handles updating self.Properties['family_name'] and other logic
-            if not self.fam_registry.UpdateFamilyName(self.ownerComp, new_name):
-                # Revert parameter if registry rejected the update, try to reinit/register with new name
-                self.ownerComp.par.reinitextensions.pulse()
-                # 
+        if not self.fam_registry:
+            return
+        if not self.fam_registry.UpdateFamilyName(self.ownerComp, new_name):
+            # Registry rejected. Revert par to our current (still-registered) name
+            # without reiniting, so state stays consistent.
+            old_name = self.Properties['family_name']
+            if self.ownerComp.par.Family.eval() != old_name:
+                self.ownerComp.par.Family = old_name
+            ui.messageBox(
+                'Rename Rejected',
+                f"Family name '{new_name}' is taken or owner mismatch. Reverted to '{old_name}'.",
+                buttons=['OK'],
+            )
 
     def onParColor(self):
         p = self.ownerComp.par
@@ -334,6 +349,18 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
             return
         self._update_with_ui(operators)
 
+    def onParUpdatetype(self):
+        _type = self.ownerComp.par.Targettype.eval()
+        if not _type:
+            return
+
+        _operators = self._find_family_operators(type=_type)
+        if not _operators:
+            ui.messageBox('No Operators', f'No {_type} operators found.', buttons=['OK'])
+            return
+        self._update_with_ui(_operators)
+
+
     def onParCreatestuball(self):
         operators = self._find_family_operators(include_stubs=False)
         if not operators:
@@ -377,7 +404,7 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         if callbacks_dat and hasattr(self.ownerComp.par, 'Callbackdat'):
             self.ownerComp.par.Callbackdat = callbacks_dat
 
-    def onParDeploymanifests(self):
+    def onParEnsuremanifests(self):
         if not self.fam_registry:
             debug('Deploy Manifests: Family not registered')
             return

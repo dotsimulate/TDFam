@@ -69,6 +69,7 @@ def cook(scriptOp):
     connectTo = scriptOp.par.Connectto.eval()
     license = licences.type
     tableRows = scriptOp.par.Rows
+    search_words_dict = registry.FileManager.GetSearchWords(currFamily)
 
 
     if not connectTo:
@@ -194,7 +195,14 @@ def cook(scriptOp):
                     node['score'] = 0
                     node['os'] = os_compat  # Add OS compatibility
 
-                    if not len(searchString) or searchString in type.lower() or searchString in label.lower():
+                    # Look up extra search words by op_type (opType column = op_type + fam_name).
+                    op_type_key = str(node['opType']).lower().replace(currFamily.lower(), '')
+                    extra_words = search_words_dict.get(op_type_key, [])
+                    search_word_match = bool(searchString) and any(
+                        w == searchString or w.startswith(searchString) for w in extra_words
+                    )
+
+                    if not len(searchString) or searchString in type.lower() or searchString in label.lower() or search_word_match:
                         node['score'] = 0
                         labelByCapital = re.findall('[A-Z][^A-Z]*', familyOps[i,'label'].val)
                         if label.lower() == searchString:
@@ -206,6 +214,8 @@ def cook(scriptOp):
                         elif searchString in label.lower().split(' '):
                             node['score'] = 2
                         elif any([s.lower().startswith(searchString) for s in labelByCapital]):
+                            node['score'] = 2
+                        elif search_word_match:
                             node['score'] = 2
                         if node['score'] > 0:
                             opType = ['defGenerator','defFilter'][isFilter]

@@ -41,8 +41,7 @@ class UpdateManager:
 		if not installer:
 			return (None, None, 'none')
 
-		category_tags = self.registry._GetCategoryTags(family_name) or set()
-		comp_type, info_type = resolve_op_type(comp, family_name, self.registry.TagManager, category_tags)
+		comp_type, info_type = resolve_op_type(comp, family_name, self.registry.TagManager)
 
 		if comp_type:
 			result = self.registry.FileManager.get_operator_source(

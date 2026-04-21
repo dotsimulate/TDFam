@@ -98,7 +98,7 @@ def get_op_type_from_manifest(manifest):
 			pass
 	return ''
 
-def resolve_op_type(comp, family_name, tag_manager=None, category_tags=None):
+def resolve_op_type(comp, family_name, tag_manager=None):
 	"""
 	Resolve operator type from manifest first, then fall back to tags.
 
@@ -106,7 +106,6 @@ def resolve_op_type(comp, family_name, tag_manager=None, category_tags=None):
 		comp: The component to resolve type for
 		family_name: The family name
 		tag_manager: Optional TagManager instance for tag-based fallback
-		category_tags: Optional set of category tags for tag resolution
 
 	Returns:
 		tuple: (op_type, source) where source is 'manifest', 'tags', or 'name'
@@ -117,7 +116,7 @@ def resolve_op_type(comp, family_name, tag_manager=None, category_tags=None):
 		if op_type:
 			return op_type, 'manifest'
 	if tag_manager:
-		op_type = tag_manager.get_operator_type(comp, family_name, category_tags)
+		op_type = tag_manager.get_operator_type(comp, family_name)
 		if op_type:
 			return op_type, 'tags'
 	return sanitize_name(comp.name), 'name'

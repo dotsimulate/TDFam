@@ -271,7 +271,19 @@ class OpFamCreateExt:
         if self.operators_folder:
             self.fam_registry.FileManager.refresh_cache(self.FamilyName.val, self.operators_folder)
 
-        self.fam_registry.InstallFamily(self.ownerComp)
+        if not self.fam_registry.InstallFamily(self.ownerComp):
+            # Registry rejected install (not our owner, or not registered)
+            if hasattr(self.ownerComp.par, 'Install'):
+                self.ownerComp.par.Install = False
+            existing = self.fam_registry.GetFamilyOwner(self.FamilyName.val)
+            existing_path = existing.path if existing else 'unknown'
+            ui.messageBox(
+                'Install Rejected',
+                f"Family '{self.FamilyName.val}' is owned by {existing_path}. "
+                f"Rename this comp's Family par to a free name before installing.",
+                buttons=['OK'],
+            )
+            return
 
         op_fam = self.ownerComp.op('OP_fam')
 
@@ -281,7 +293,9 @@ class OpFamCreateExt:
             run('args[0].cook(force=True)', fam_create, delayFrames=1, delayRef=op.TDResources)
 
     def _do_uninstall(self):
-        self.fam_registry.UninstallFamily(self.ownerComp)
+        if not self.fam_registry.UninstallFamily(self.ownerComp):
+            # Registry rejected uninstall (not our install). Don't flip par state.
+            return
 
     def _tag_operators(self, pattern='suffix'):
         self.fam_registry.TagManager.tag_operators(self.FamilyName.val, pattern)
@@ -294,7 +308,7 @@ class OpFamCreateExt:
     def _get_operators(self):
         if not self.fam_registry:
             return None
-        return self.fam_registry.GetOperators(self.FamilyName.val)
+        return self.fam_registry.GetMasterOps(self.FamilyName.val)
 
     def _refresh_folder(self):
         self.fam_registry.FileManager.refresh_cache(self.FamilyName.val, self.operators_folder)
@@ -343,8 +357,8 @@ class OpFamCreateExt:
 
     # region Stubs
 
-    def _find_family_operators(self, scope=None, include_stubs=True):
-        return self.fam_registry.FindOps(self.FamilyName.val, network=scope, include_stubs=include_stubs)
+    def _find_family_operators(self, scope=None, include_stubs=True, type=None):
+        return self.fam_registry.FindOps(self.FamilyName.val, network=scope, include_stubs=include_stubs, type=type)
 
     def _find_stubs(self, scope=None):
         return self.fam_registry.StubManager.find_stubs(self.FamilyName.val, scope)
