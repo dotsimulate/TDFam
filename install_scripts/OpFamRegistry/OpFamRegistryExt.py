@@ -465,6 +465,9 @@ class OpFamRegistryExt:
 		for o in to_update:
 			self._rewriteOpFamilyRef(family_owner, o, old_name, new_name)
 
+		# Validate on-disk sidecar JSON manifests for file-based ops
+		self.OpManager.deployManifestsToDisk(family_owner)
+
 	def _rewriteOpFamilyRef(self, family_owner, _op, old_name, new_name):
 		"""Update a single op's manifest (if any) + legacy tags to use new_name."""
 		manifest = _op.op('FamManifest')
