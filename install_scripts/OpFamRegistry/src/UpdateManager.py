@@ -262,7 +262,15 @@ class UpdateManager:
 
 			# Apply family color for file-based ops
 			if is_file_loaded and hasattr(installer, 'ownerComp'):
-				apply_family_color(installer.ownerComp, new_comp)
+				op_color = None
+				_m = new_comp.op('FamManifest')
+				if _m and _m.op('OpInfo'):
+					try:
+						_oi = json.loads(_m.op('OpInfo').text)
+						op_color = _oi.get('op_color')
+					except:
+						pass
+				apply_family_color(installer.ownerComp, new_comp, op_color=op_color)
 
 			# Hook: PostUpdate
 			self.registry.CallHook(family_name, '_PostUpdate', new_comp, extra_info)

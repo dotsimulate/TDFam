@@ -221,16 +221,14 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
     def onParColor(self):
         p = self.ownerComp.par
         color = [p.Colorr.eval(), p.Colorg.eval(), p.Colorb.eval()]
+        old_color = list(self.Properties.get('color', [0.5, 0.5, 0.5]))
+        self.Properties['color'] = color
         if self.fam_registry:
-            # The registry handles updating global UI, we update local property
-            if not self.fam_registry.UpdateFamilyColor(self.ownerComp, color):
-                # Revert parameters if registry rejected the update
-                old_color = self.Properties['color']
+            if not self.fam_registry.UpdateFamilyColor(self.ownerComp, color, old_color=old_color):
+                self.Properties['color'] = old_color
                 p.Colorr, p.Colorg, p.Colorb = old_color
                 ui.messageBox('Update Failed', f'Registry rejected color change for {self.ownerComp.name}. Check for owner mismatch.', buttons=['OK'])
                 return
-        
-        self.Properties['color'] = color
 
     def onParIndex(self):
         self.Properties['index'] = int(self.ownerComp.par.Index.eval())

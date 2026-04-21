@@ -1,4 +1,4 @@
-# me - this DAT
+﻿# me - this DAT
 # panelValue - the PanelValue object that changed
 # prev - the previous value of the PanelValue object that changed
 # Make sure the corresponding toggle is enabled in the Panel Execute DAT.
@@ -41,6 +41,11 @@ def onValueChange(panelValue, prev):
         return
 
     if panelValue == -1:
+        return
+
+    # Skip placement on right-click — let panelexec3 handle the pop menu
+    nodetable = parent.OPCREATE.op('nodetable')
+    if nodetable and nodetable.panel.rselect:
         return
 
     # Use the unified global inject script output

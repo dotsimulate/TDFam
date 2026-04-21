@@ -407,7 +407,15 @@ class StubManager:
 
 			# Apply family color for file-based ops
 			if source_type == 'file' and hasattr(installer, 'ownerComp'):
-				apply_family_color(installer.ownerComp, new_comp)
+				op_color = None
+				_m = new_comp.op('FamManifest')
+				if _m and _m.op('OpInfo'):
+					try:
+						_oi = json.loads(_m.op('OpInfo').text)
+						op_color = _oi.get('op_color')
+					except:
+						pass
+				apply_family_color(installer.ownerComp, new_comp, op_color=op_color)
 
 			# Hook: PostReplace
 			self.registry.CallHook(family_name, '_PostReplace', new_comp, stub, extra_info)

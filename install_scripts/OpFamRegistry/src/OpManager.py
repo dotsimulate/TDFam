@@ -111,7 +111,7 @@ class OpManager:
 			self._tag_op(family_owner, clone, OpInfo)
 
 			self._handle_license(family_owner, clone)
-			self._handle_attributes(family_owner, clone, is_file_based=is_file_based)
+			self._handle_attributes(family_owner, clone, is_file_based=is_file_based, OpInfo=OpInfo)
 
 		# TODO X: result = op.FAMREGISTRY.CallHook(family, '_PlaceOp', panelValue, lookup_name) ... now that the manifest did its job...?
 
@@ -128,11 +128,12 @@ class OpManager:
 		ext_opinfo = external_manifest.get('OpInfo', {}) if external_manifest else {}
 		ext_parretain = external_manifest.get('ParRetain', {}) if external_manifest else {}
 		ext_shortcuts = external_manifest.get('Shortcuts', {}) if external_manifest else {}
+		ext_stateretain = external_manifest.get('StateRetain', {}) if external_manifest else {}
 
 		OpInfo = self._validate_OpInfo(family_owner, _op, manifest, tox_file_version=tox_file_version, display_name=display_name, external_opinfo=ext_opinfo)
 		ParRetain = self._validate_ParRetain(family_owner, _op, manifest, external_parretain=ext_parretain)
 		Shortcuts = self._validate_Shortcuts(family_owner, _op, manifest, external_shortcuts=ext_shortcuts)
-		self._validate_StateRetain(family_owner, _op, manifest)
+		self._validate_StateRetain(family_owner, _op, manifest, external_stateretain=ext_stateretain)
 
 		return OpInfo, ParRetain, Shortcuts
 
@@ -219,9 +220,8 @@ class OpManager:
 		OpInfo['fam_version'] = str(family_owner.par.Version.eval())
 		OpInfo['op_fam'] = family_owner.Properties['family_name']
 
-		# Persist compatible_types: keep per-operator override, else inherit family-level
-		if not OpInfo.get('compatible_types'):
-			OpInfo['compatible_types'] = list(family_owner.Properties.get('compatible_types', []))
+		# Only persist compatible_types if explicitly declared (external manifest or internal DAT)
+		# Do NOT auto-inherit family-level defaults into per-operator OpInfo
 
 		# Override name/type/label with display_name if provided and field was a fallback
 		if display_name:
@@ -244,7 +244,7 @@ class OpManager:
 
 		# sanitize
 		OpInfo['op_name'] = sanitize_name(OpInfo['op_name'])
-		OpInfo['op_type'] = sanitize_name(OpInfo['op_type'])
+		OpInfo['op_type'] = sanitize_name(OpInfo['op_type'], base=False)
 
 		# Ensure consistent key order for readability
 		_key_order = ['fam_version', 'op_version', 'op_fam', 'op_type', 'op_name', 'op_label']
@@ -270,12 +270,18 @@ class OpManager:
 			_Shortcuts.text = json.dumps(_dict, indent=4)
 		return _dict
 
-	def _validate_StateRetain(self, family_owner, _op, manifest):
+	def _validate_StateRetain(self, family_owner, _op, manifest, external_stateretain=None):
 		_StateRetain = manifest.op('StateRetain')
 		if not _StateRetain:
 			_StateRetain = manifest.create(textDAT, 'StateRetain')
 			_StateRetain.text = '{}'
-		return json.loads(_StateRetain.text)
+		_dict = json.loads(_StateRetain.text)
+		if external_stateretain:
+			for k, v in external_stateretain.items():
+				if k not in _dict:
+					_dict[k] = v
+			_StateRetain.text = json.dumps(_dict, indent=4)
+		return _dict
 
 	def _validate_ParRetain(self, family_owner, _op, manifest, external_parretain=None):
 		_ParRetain = manifest.op('ParRetain')
@@ -380,9 +386,10 @@ class OpManager:
 			else:
 				_op.copy(license)
 
-	def _handle_attributes(self, family_owner, _op, is_file_based=False):
+	def _handle_attributes(self, family_owner, _op, is_file_based=False, OpInfo=None):
 		if is_file_based:
-			apply_family_color(family_owner, _op)
+			op_color = OpInfo.get('op_color') if OpInfo else None
+			apply_family_color(family_owner, _op, op_color=op_color)
 
 		_op.allowCooking = True
 		_op.bypass = False

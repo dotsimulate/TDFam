@@ -158,16 +158,30 @@ def ensure_manifest_tags(target, family_name, op_type=None, is_stub=False, is_ma
 		target.tags.discard('<STUB>')
 		target.tags.add('<MANIFEST>')
 
-def apply_family_color(family_owner, comp):
-	"""
-	Apply family color to a component if Colorfileops is enabled.
+def _get_expected_color(family_owner, op_color=None):
+	"""Return the expected RGB tuple: op_color if set, else family color."""
+	if op_color and len(op_color) >= 3:
+		return tuple(op_color[:3])
+	return (family_owner.par.Colorr.eval(), family_owner.par.Colorg.eval(), family_owner.par.Colorb.eval())
 
-	Args:
-		family_owner: The installer/family owner comp
-		comp: The target component to color
+def _color_matches(a, b, tol=0.002):
+	"""Compare two RGB tuples within tolerance."""
+	return all(abs(a[i] - b[i]) < tol for i in range(3))
+
+def _is_default_gray(color, tol=0.002):
+	return all(abs(c - 0.545) < tol for c in color[:3])
+
+def apply_family_color(family_owner, comp, op_color=None):
 	"""
-	if hasattr(family_owner.par, 'Colorfileops') and family_owner.par.Colorfileops.eval():
-		comp.color = (family_owner.par.Colorr.eval(), family_owner.par.Colorg.eval(), family_owner.par.Colorb.eval())
+	Apply color to a freshly loaded file-based component.
+	Always sets color: op_color from manifest if provided, else family color.
+	No user-color check — tox color at load time is not a user choice.
+	"""
+	if not (hasattr(family_owner.par, 'Colorfileops') and family_owner.par.Colorfileops.eval()):
+		return
+	expected = _get_expected_color(family_owner, op_color)
+	debug(f"[apply_family_color] APPLYING color {expected} to {comp.path} (op_color={op_color})")
+	comp.color = expected
 
 def _filter_keys_by_rules(available_keys, rules, scenario):
 	"""

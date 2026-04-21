@@ -30,7 +30,9 @@ class GlobalUIInjector:
 			self._modify_launch_menu()
 			self._modify_create_node()
 			self._modify_search_exec()
-			
+			self._setup_popmenu_callbacks()
+			self._setup_helptext_chain()
+
 		except Exception as e:
 			debug(f'Error installing UI for family {family_name}: {e}')
 			import traceback
@@ -48,7 +50,9 @@ class GlobalUIInjector:
 					nodeTable.op('inject_opfam_registry').destroy()
 				if menuOp.op('opfam_panel_execute'):
 					menuOp.op('opfam_panel_execute').destroy()
-			
+				self._cleanup_popmenu_callbacks()
+				self._cleanup_helptext_chain()
+
 			families_op = nodeTable.op('families')
 			if families_op:
 				menuOp.op('families/family').click(0,0)
@@ -478,6 +482,277 @@ elif(source == 'input' and ({compatible_check})):
 		# Ensure it listens to the correct panel (likely /ui/dialogs/menu_op)
 		# Usually it watches its parent.
 
+	def _setup_popmenu_callbacks(self):
+		"""Deploy opfam_popMenuCallbacks to nodetable and set expression on popMenu.par.Callbackdat."""
+		nodeTable = self.nodeTable
+		if not nodeTable:
+			debug('[_setup_popmenu_callbacks] nodeTable is None, aborting')
+			return
+
+		cb_name = 'opfam_popMenuCallbacks'
+		existing = nodeTable.op(cb_name)
+		debug(f'[_setup_popmenu_callbacks] existing={existing}')
+
+		# Create the callback DAT if it doesn't exist
+		if not existing:
+			source = self.ownerComp.op(cb_name)
+			debug(f'[_setup_popmenu_callbacks] source DAT in registry={source}')
+			if source:
+				existing = nodeTable.copy(source, name=cb_name)
+				debug(f'[_setup_popmenu_callbacks] copied from registry source, len={len(existing.text)}')
+			else:
+				existing = nodeTable.create(textDAT, cb_name)
+				import os
+				tox_path = self.ownerComp.par.externaltox.eval() or ''
+				cb_file = os.path.join(os.path.dirname(tox_path), 'src', 'opfam_popMenuCallbacks.py')
+				debug(f'[_setup_popmenu_callbacks] no source DAT, trying file: {cb_file} exists={os.path.exists(cb_file)} tox_path={tox_path}')
+				if os.path.exists(cb_file):
+					with open(cb_file, 'r') as f:
+						existing.text = f.read()
+					debug(f'[_setup_popmenu_callbacks] loaded from file, len={len(existing.text)}')
+				else:
+					debug(f'[_setup_popmenu_callbacks] FILE NOT FOUND: {cb_file}')
+
+			# Position next to inject_opfam_registry
+			inject_op = nodeTable.op('inject_opfam_registry')
+			if inject_op:
+				existing.nodeX = inject_op.nodeX
+				existing.nodeY = inject_op.nodeY - 120
+			else:
+				existing.nodeX = nodeTable.op('popMenuCallbacks').nodeX + 200 if nodeTable.op('popMenuCallbacks') else 0
+				existing.nodeY = nodeTable.op('popMenuCallbacks').nodeY if nodeTable.op('popMenuCallbacks') else 0
+
+		debug(f'[_setup_popmenu_callbacks] deployed DAT len={len(existing.text) if existing else "None"}')
+
+		# Set expression on popMenu.par.Callbackdat to auto-swap
+		popMenu = nodeTable.op('popMenu')
+		if popMenu:
+			fam_names = list(self.owner.InstalledFams.keys())
+			fam_list_str = str(fam_names)
+			popMenu.par.Callbackdat.expr = (
+				f"op('opfam_popMenuCallbacks') "
+				f"if op('/ui/dialogs/menu_op/current')[0,0].val in {fam_list_str} "
+				f"else op('popMenuCallbacks')"
+			)
+			debug(f'[_setup_popmenu_callbacks] popMenu.Callbackdat expr set for families={fam_list_str}')
+
+		self._inject_panelexec3()
+
+	def _inject_panelexec3(self):
+		"""Inject OPFAM markers into panelexec3 to set custom Items for custom families."""
+		nodeTable = self.nodeTable
+		if not nodeTable:
+			return
+
+		pe3 = nodeTable.op('panelexec3')
+		if not pe3:
+			return
+
+		text = pe3.text
+		import re
+
+		# Remove existing marker block
+		if '# OPFAM_POPMENU_START' in text and '# OPFAM_POPMENU_END' in text:
+			pattern = r"\n?\t\t\t# OPFAM_POPMENU_START\n.*?\t\t\t# OPFAM_POPMENU_END\n"
+			text = re.sub(pattern, "\n", text, flags=re.DOTALL)
+
+		# Build injection block
+		if self.owner.InstalledFams:
+			fam_names = list(self.owner.InstalledFams.keys())
+			fam_list_str = str(fam_names)
+
+			injection = (
+				f"\t\t\t# OPFAM_POPMENU_START\n"
+				f"\t\t\tif family in {fam_list_str}:\n"
+				f"\t\t\t\tselectedOp = op('selectedOp')\n"
+				f"\t\t\t\t_registry = getattr(op, 'FAMREGISTRY', None)\n"
+				f"\t\t\t\t_items = ['Documentation']\n"
+				f"\t\t\t\t_disabled = []\n"
+				f"\t\t\t\t_dividers = []\n"
+				f"\t\t\t\tif _registry:\n"
+				f"\t\t\t\t\t_installer = _registry.InstalledFams.get(family)\n"
+				f"\t\t\t\t\tif _installer:\n"
+				f"\t\t\t\t\t\t_manifest_items = _registry.ext.OpFamRegistryExt.getPopMenuItems(family, opType)\n"
+				f"\t\t\t\t\t\tif _manifest_items:\n"
+				f"\t\t\t\t\t\t\t_dividers.append(_items[-1])\n"
+				f"\t\t\t\t\t\t\tfor _mi in _manifest_items:\n"
+				f"\t\t\t\t\t\t\t\t_items.append(_mi.get('label', ''))\n"
+				f"\t\t\t\t\t\t\t\tif _mi.get('disabled', False):\n"
+				f"\t\t\t\t\t\t\t\t\t_disabled.append(_mi.get('label', ''))\n"
+				f"\t\t\t\t\t\t_doc_url = _registry.ext.OpFamRegistryExt.getDocUrl(family, opType)\n"
+				f"\t\t\t\t\t\tif not _doc_url:\n"
+				f"\t\t\t\t\t\t\t_disabled.append('Documentation')\n"
+				f"\t\t\t\tpopMenu.par.Items = str(_items)\n"
+				f"\t\t\t\tpopMenu.par.Disableditems = str(_disabled)\n"
+				f"\t\t\t\tpopMenu.par.Dividersafteritems = str(_dividers)\n"
+				f"\t\t\t\tselectedOp['help',1] = label\n"
+				f"\t\t\t\tselectedOp['pythonHelp',1] = opType\n"
+				f"\t\t\t\tpanel = panelValue.owner\n"
+				f"\t\t\t\tmouseLoc = panel.locateMouse()\n"
+				f"\t\t\t\tpopMenu.par.x = min(mouseLoc[0]-5, panel.width-popMenu.width)\n"
+				f"\t\t\t\tif mouseLoc[1] - popMenu.height + 5 < 0:\n"
+				f"\t\t\t\t\tpopMenu.par.y = mouseLoc[1]\n"
+				f"\t\t\t\telse:\n"
+				f"\t\t\t\t\tpopMenu.par.y = mouseLoc[1] - popMenu.height + 5\n"
+				f"\t\t\t\trun('args[0].par.display = True', popMenu, delayFrames=1, delayRef=op.TDResources)\n"
+				f"\t\t\t\treturn\n"
+				f"\t\t\telse:\n"
+				f"\t\t\t\tpopMenu.par.Items = str(['Help', 'Python Help', 'Operator Snippets', 'Edit Templates...'])\n"
+				f"\t\t\t\tpopMenu.par.Dividersafteritems = str([])\n"
+				f"\t\t\t# OPFAM_POPMENU_END\n"
+			)
+
+			# Insert after: family = detailOp[panelValue+1,'family'].val
+			insert_key = "family = detailOp[panelValue+1,'family'].val"
+			if insert_key in text:
+				idx = text.index(insert_key) + len(insert_key)
+				# Find end of that line
+				nl = text.index('\n', idx)
+				text = text[:nl + 1] + injection + text[nl + 1:]
+
+		pe3.text = text
+
+	def _cleanup_panelexec3(self):
+		"""Remove OPFAM markers from panelexec3."""
+		nodeTable = self.nodeTable
+		if not nodeTable:
+			return
+
+		pe3 = nodeTable.op('panelexec3')
+		if not pe3:
+			return
+
+		text = pe3.text
+		import re
+		if '# OPFAM_POPMENU_START' in text and '# OPFAM_POPMENU_END' in text:
+			pattern = r"\n?\t\t\t# OPFAM_POPMENU_START\n.*?\t\t\t# OPFAM_POPMENU_END\n"
+			text = re.sub(pattern, "\n", text, flags=re.DOTALL)
+			pe3.text = text
+
+	def _cleanup_popmenu_callbacks(self):
+		"""Remove opfam_popMenuCallbacks, restore original Callbackdat, clean panelexec3."""
+		nodeTable = self.nodeTable
+		if not nodeTable:
+			return
+
+		# Restore Callbackdat to original constant value
+		popMenu = nodeTable.op('popMenu')
+		if popMenu:
+			original_cb = nodeTable.op('popMenuCallbacks')
+			popMenu.par.Callbackdat.expr = ''
+			popMenu.par.Callbackdat.val = original_cb if original_cb else ''
+
+			# Restore original Items
+			popMenu.par.Items = str(['Help', 'Python Help', 'Operator Snippets', 'Edit Templates...'])
+			popMenu.par.Disableditems = str([])
+			popMenu.par.Dividersafteritems = str([])
+
+		# Remove our callback DAT
+		cb = nodeTable.op('opfam_popMenuCallbacks')
+		if cb:
+			cb.destroy()
+
+		# Clean panelexec3
+		self._cleanup_panelexec3()
+
+	def _setup_helptext_chain(self):
+		"""Wire the helptext merge chain in menu_op so custom family summaries appear."""
+		menuOp = self.menu_op
+		if not menuOp:
+			return
+
+		summaries_null = menuOp.op('summaries')
+		if not summaries_null:
+			return
+
+		# Ensure summaries tableDAT exists in registry
+		if not self.ownerComp.op('summaries'):
+			self.ownerComp.create(tableDAT, 'summaries')
+
+		# Rebuild summaries from manifests
+		self.owner.rebuildSummaries()
+
+		merge_name = 'merge_opfam_summaries'
+		select_src_name = 'select_sumFromParGrabber'
+		select_opfam_name = 'select_opfam_help'
+
+		# If chain already exists, just rebuild summaries data
+		if menuOp.op(merge_name):
+			return
+
+		# Find original input to summaries (the parGrabber null_summaries)
+		original_input = summaries_null.inputs[0] if summaries_null.inputs else None
+		if not original_input:
+			return
+
+		# Create select for original summaries source
+		select_src = menuOp.create(selectDAT, select_src_name)
+		select_src.par.dat.mode = ParMode.EXPRESSION
+		select_src.par.dat.expr = f"op('{original_input.path}')"
+
+		# Create select for opfam summaries
+		select_opfam = menuOp.create(selectDAT, select_opfam_name)
+		select_opfam.par.dat.mode = ParMode.EXPRESSION
+		select_opfam.par.dat.expr = "op.FAMREGISTRY.op('summaries')"
+
+		# Create merge
+		merge = menuOp.create(mergeDAT, merge_name)
+
+		# Wire: select_src + select_opfam -> merge -> summaries
+		select_src.outputConnectors[0].connect(merge)
+		select_opfam.outputConnectors[0].connect(merge)
+
+		# Disconnect original input from summaries, wire merge instead
+		original_input.outputConnectors[0].disconnect()
+		merge.outputConnectors[0].connect(summaries_null)
+
+		# Position near summaries
+		select_src.nodeX = summaries_null.nodeX - 300
+		select_src.nodeY = summaries_null.nodeY + 80
+		select_opfam.nodeX = summaries_null.nodeX - 300
+		select_opfam.nodeY = summaries_null.nodeY - 80
+		merge.nodeX = summaries_null.nodeX - 150
+		merge.nodeY = summaries_null.nodeY
+
+	def _cleanup_helptext_chain(self):
+		"""Remove the helptext merge chain and restore original wiring."""
+		menuOp = self.menu_op
+		if not menuOp:
+			return
+
+		merge = menuOp.op('merge_opfam_summaries')
+		select_src = menuOp.op('select_sumFromParGrabber')
+		select_opfam = menuOp.op('select_opfam_help')
+		summaries_null = menuOp.op('summaries')
+
+		if merge and summaries_null:
+			# Find the original source (what select_src points to)
+			original_path = None
+			if select_src:
+				try:
+					original_path = select_src.par.dat.eval().path if select_src.par.dat.eval() else None
+				except:
+					pass
+
+			# Disconnect merge from summaries
+			merge.outputConnectors[0].disconnect()
+
+			# Reconnect original source to summaries
+			if original_path:
+				original_op = op(original_path)
+				if original_op:
+					original_op.outputConnectors[0].connect(summaries_null)
+
+		# Destroy our ops
+		for o in [merge, select_src, select_opfam]:
+			if o:
+				o.destroy()
+
+		# Clear registry summaries
+		reg_summ = self.ownerComp.op('summaries')
+		if reg_summ:
+			reg_summ.clear()
+
 	def update_compatible_table(self, family_name, family_owner):
 		"""Update compatible table with family entries."""
 		compatibleTable = self.menu_op.op('compatible')
@@ -540,18 +815,15 @@ elif(source == 'input' and ({compatible_check})):
 		except Exception as e:
 			debug(f"Error setting self-compatibility: {e}")
 
-	def _set_owner_colors(self, family_owner):
+	def _set_owner_colors(self, family_owner, old_color=None):
 		"""Set color on all family owner children."""
 		color = family_owner.Properties.get('color', [0.5, 0.5, 0.5])
 		color_val = list(color)
 		if len(color_val) < 4:
 			color_val = color_val + [1.0] * (4 - len(color_val))
 
-		# Operator .color expects 3 elements (RGB)
 		rgb_color = color_val[:3]
-
-		# Operator .color expects 3 elements (RGB)
-		rgb_color = color_val[:3]
+		old_rgb = tuple(old_color[:3]) if old_color and len(old_color) >= 3 else None
 
 		try:
 			family_owner.color = rgb_color
@@ -576,7 +848,27 @@ elif(source == 'input' and ({compatible_check})):
 		for manifest in root.findChildren(type=COMP, tags=[f'<FAM:{family_name}>', '<MANIFEST>'], allTags=True):
 			parent_op = manifest.parent()
 			if parent_op:
-				parent_op.color = rgb_color
+				op_color = None
+				_opinfo_dat = manifest.op('OpInfo')
+				if _opinfo_dat:
+					try:
+						import json
+						_oi = json.loads(_opinfo_dat.text)
+						op_color = _oi.get('op_color')
+					except:
+						pass
+				expected = tuple(op_color[:3]) if op_color and len(op_color) >= 3 else tuple(rgb_color)
+				current = tuple(parent_op.color[:3])
+				is_default = all(abs(c - 0.545) < 0.002 for c in current)
+				is_family = all(abs(current[i] - rgb_color[i]) < 0.002 for i in range(3))
+				is_expected = all(abs(current[i] - expected[i]) < 0.002 for i in range(3))
+				is_old = old_rgb is not None and all(abs(current[i] - old_rgb[i]) < 0.002 for i in range(3))
+				debug(f"[_set_owner_colors] op={parent_op.path} op_color={op_color} expected={expected} current={current} is_default={is_default} is_family={is_family} is_expected={is_expected} is_old={is_old} old_rgb={old_rgb}")
+				if not is_default and not is_family and not is_expected and not is_old:
+					debug(f"[_set_owner_colors] SKIPPED op={parent_op.path} — custom color detected")
+					continue
+				debug(f"[_set_owner_colors] APPLYING color {expected} to {parent_op.path}")
+				parent_op.color = expected
 
 
 	def update_family_name(self, old_name, new_name):
@@ -616,20 +908,20 @@ elif(source == 'input' and ({compatible_check})):
 		except Exception as e:
 			debug(f'Error updating UI for family name change: {e}')
 
-	def update_family_color(self, family_name, new_color):
+	def update_family_color(self, family_name, new_color, old_color=None):
 		"""
 		Update family color in UI elements.
 		Updates the colors table and family owner children.
 		"""
 		try:
-			debug(f'Updating UI color for family {family_name} to {new_color}')
+			family_owner = self.owner.RegisteredFams.get(family_name)
+			debug(f'Updating UI color for family {family_name} to {new_color} (old={old_color})')
 			# 1. Update colors table (global rebuild is easiest to keep in sync)
 			self._update_colors_table()
 
 			# 2. Update owner colors
-			family_owner = self.owner.RegisteredFams.get(family_name)
 			if family_owner:
-				self._set_owner_colors(family_owner)
+				self._set_owner_colors(family_owner, old_color=old_color)
 				
 		except Exception as e:
 			debug(f'Error updating UI color for family {family_name}: {e}')

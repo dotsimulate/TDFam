@@ -418,17 +418,17 @@ class OpFamRegistryExt:
 		
 		return True
 	
-	def UpdateFamilyColor(self, family_owner, new_color):
+	def UpdateFamilyColor(self, family_owner, new_color, old_color=None):
 		"""Update family color in UI elements."""
 		fam_name = family_owner.Properties['family_name']
-		
+
 		# Validate owner
 		if not self.ValidateFamilyOwner(fam_name, family_owner):
 			debug(f'UpdateFamilyColor ignored: owner mismatch for {fam_name}')
 			return False
 
 		if fam_name in self.RegisteredFams:
-			self.global_ui_injector.update_family_color(fam_name, new_color)
+			self.global_ui_injector.update_family_color(fam_name, new_color, old_color=old_color)
 		
 		return True
 
@@ -845,6 +845,76 @@ class OpFamRegistryExt:
 	def _PostPlaceOp(self, fam_name, clone):
 		info = {'clone': clone, 'about': 'Customize the placed operator'}
 		return self._dispatch_hook(fam_name, 'onPostPlaceOp', info)
+
+	def rebuildSummaries(self):
+		"""Rebuild the summaries table from all installed families' manifest OpInfo."""
+		import json
+		summ_dat = self.ownerComp.op('summaries')
+		if not summ_dat:
+			return
+
+		summ_dat.clear()
+		for fam_name, installer in self.InstalledFams.items():
+			fam_ext = self.GetFamilyExt(fam_name)
+			if not fam_ext:
+				continue
+			op_comp = fam_ext.operators_comp
+			if not op_comp:
+				continue
+			for child in op_comp.findChildren(maxDepth=1):
+				manifest = child.op('FamManifest')
+				if manifest and manifest.op('OpInfo'):
+					try:
+						opinfo = json.loads(manifest.op('OpInfo').text)
+						op_label = opinfo.get('op_label', child.name)
+						summary = opinfo.get('summary', '')
+						if summary:
+							key = f"{fam_name} {op_label}"
+							summ_dat.appendRow([key, summary])
+					except:
+						pass
+
+	def getPopMenuItems(self, fam_name, op_type):
+		"""Get pop_menu items from manifest OpInfo for an operator."""
+		installer = self.InstalledFams.get(fam_name)
+		if not installer:
+			return []
+		op_comp = installer.par.Opcomp.eval() if hasattr(installer.par, 'Opcomp') else None
+		if not op_comp:
+			return []
+		op_name = op_type.replace(fam_name, '')
+		for child in op_comp.findChildren(maxDepth=1):
+			manifest = child.op('FamManifest')
+			if manifest and manifest.op('OpInfo'):
+				try:
+					import json
+					opinfo = json.loads(manifest.op('OpInfo').text)
+					if opinfo.get('op_type', '') == op_name or child.name == op_name:
+						return opinfo.get('pop_menu', [])
+				except:
+					pass
+		return []
+
+	def getDocUrl(self, fam_name, op_type):
+		"""Get doc_url from manifest OpInfo for an operator."""
+		installer = self.InstalledFams.get(fam_name)
+		if not installer:
+			return None
+		op_comp = installer.par.Opcomp.eval() if hasattr(installer.par, 'Opcomp') else None
+		if not op_comp:
+			return None
+		op_name = op_type.replace(fam_name, '')
+		for child in op_comp.findChildren(maxDepth=1):
+			manifest = child.op('FamManifest')
+			if manifest and manifest.op('OpInfo'):
+				try:
+					import json
+					opinfo = json.loads(manifest.op('OpInfo').text)
+					if opinfo.get('op_type', '') == op_name or child.name == op_name:
+						return opinfo.get('doc_url')
+				except:
+					pass
+		return None
 
 	def _PreStub(self, fam_name, comp):
 		info = {'comp': comp, 'opType': self._get_op_type(comp), 'about': 'Return False to skip stubbing this operator'}
