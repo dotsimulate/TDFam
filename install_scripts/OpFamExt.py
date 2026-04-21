@@ -219,12 +219,19 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
 
     def onParFamily(self):
         new_name = self.ownerComp.par.Family.eval()
-        if self.fam_registry:
-            # The registry handles updating self.Properties['family_name'] and other logic
-            if not self.fam_registry.UpdateFamilyName(self.ownerComp, new_name):
-                # Revert parameter if registry rejected the update, try to reinit/register with new name
-                self.ownerComp.par.reinitextensions.pulse()
-                # 
+        if not self.fam_registry:
+            return
+        if not self.fam_registry.UpdateFamilyName(self.ownerComp, new_name):
+            # Registry rejected. Revert par to our current (still-registered) name
+            # without reiniting, so state stays consistent.
+            old_name = self.Properties['family_name']
+            if self.ownerComp.par.Family.eval() != old_name:
+                self.ownerComp.par.Family = old_name
+            ui.messageBox(
+                'Rename Rejected',
+                f"Family name '{new_name}' is taken or owner mismatch. Reverted to '{old_name}'.",
+                buttons=['OK'],
+            )
 
     def onParColor(self):
         p = self.ownerComp.par

@@ -271,7 +271,19 @@ class OpFamCreateExt:
         if self.operators_folder:
             self.fam_registry.FileManager.refresh_cache(self.FamilyName.val, self.operators_folder)
 
-        self.fam_registry.InstallFamily(self.ownerComp)
+        if not self.fam_registry.InstallFamily(self.ownerComp):
+            # Registry rejected install (not our owner, or not registered)
+            if hasattr(self.ownerComp.par, 'Install'):
+                self.ownerComp.par.Install = False
+            existing = self.fam_registry.GetFamilyOwner(self.FamilyName.val)
+            existing_path = existing.path if existing else 'unknown'
+            ui.messageBox(
+                'Install Rejected',
+                f"Family '{self.FamilyName.val}' is owned by {existing_path}. "
+                f"Rename this comp's Family par to a free name before installing.",
+                buttons=['OK'],
+            )
+            return
 
         op_fam = self.ownerComp.op('OP_fam')
 
@@ -281,7 +293,9 @@ class OpFamCreateExt:
             run('args[0].cook(force=True)', fam_create, delayFrames=1, delayRef=op.TDResources)
 
     def _do_uninstall(self):
-        self.fam_registry.UninstallFamily(self.ownerComp)
+        if not self.fam_registry.UninstallFamily(self.ownerComp):
+            # Registry rejected uninstall (not our install). Don't flip par state.
+            return
 
     def _tag_operators(self, pattern='suffix'):
         self.fam_registry.TagManager.tag_operators(self.FamilyName.val, pattern)
