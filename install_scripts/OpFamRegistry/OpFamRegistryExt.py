@@ -320,6 +320,7 @@ class OpFamRegistryExt:
 			return False
 		self._add_fam_tag(family_owner)
 		self._setFamilyDict(self.RegisteredFams, fam_name, family_owner)
+		self._refreshFamilyReferences(family_owner, fam_name, fam_name)
 		debug(f'Registered family: {fam_name}')
 		self.EventEmitter.Emit('FamilyRegistered', fam_name, family_owner)
 		return True
@@ -355,6 +356,7 @@ class OpFamRegistryExt:
 		self._PreInstall(fam_name)
 
 		self._setFamilyDict(self.InstalledFams, fam_name, family_owner)
+		self._refreshFamilyReferences(family_owner, fam_name, fam_name)
 		debug(f'Installed family: {fam_name}')
 		self.global_ui_injector.install(fam_name, family_owner)
 		self.EventEmitter.Emit('FamilyInstalled', fam_name, family_owner)
