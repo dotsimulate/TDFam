@@ -206,8 +206,6 @@ class OpManager:
 
 		if 'op_version' not in opinfo and tox_file_version is not None:
 			opinfo['op_version'] = tox_file_version
-		if 'compatible_types' not in opinfo:
-			opinfo['compatible_types'] = list(family_owner.Properties.get('compatible_types', []))
 		if fallback_name:
 			if 'op_name' not in opinfo:
 				opinfo['op_name'] = sanitize_name(fallback_name)
@@ -224,19 +222,12 @@ class OpManager:
 
 	def _validate_OpInfo(self, family_owner, _op, manifest, tox_file_version=None, display_name=None, external_opinfo=None):
 		"""
-		Compute + persist OpInfo for an in-TD op. Reads from manifest DAT, merges external
-		sidecar/folder-manifest data, applies shared validation rules, and writes back.
+		Persist OpInfo for an in-TD op. The manifest DAT's current text is the source
+		of truth — every existing field (including custom ones like search_words) is
+		preserved. Only `fam_version` / `op_fam` are overwritten, and missing required
+		fields are filled from fallbacks.
 		"""
-		# Read from manifest + op.name fallbacks
-		OpInfo = self.GetOpInfo(_op, family_owner)
-
-		# External JSON seeds values NOT already present in the internal manifest
-		if external_opinfo:
-			for k, v in external_opinfo.items():
-				if not OpInfo.get(k):
-					OpInfo[k] = v
-
-		# Manifest DAT for write-back
+		# 1. Manifest DAT for write-back — ensure it exists
 		_OpInfo = None
 		if manifest:
 			_OpInfo = manifest.op('OpInfo')
@@ -244,33 +235,42 @@ class OpManager:
 				_OpInfo = self._create_manifest_dat(manifest, 'OpInfo')
 				_OpInfo.text = "{}"
 
-		# display_name override: if the raw manifest didn't set op_name/type/label,
-		# drop GetOpInfo's op.name fallback so the shared rule helper fills from display_name.
-		if display_name:
-			raw = {}
-			if isinstance(_op, OP) and _op.isCOMP:
-				_m = _op.op('FamManifest')
-				if _m and _m.op('OpInfo'):
-					try:
-						raw = json.loads(_m.op('OpInfo').text)
-					except:
-						pass
-			for k in ('op_name', 'op_type', 'op_label'):
-				if not raw.get(k):
-					OpInfo.pop(k, None)
+		# 2. Current on-manifest values are the source of truth for existing fields
+		current = {}
+		if _OpInfo:
+			try:
+				current = json.loads(_OpInfo.text)
+				if not isinstance(current, dict):
+					current = {}
+			except Exception as e:
+				print(f"_validate_OpInfo[{_op.path}]: OpInfo DAT text failed to parse as JSON ({e}); starting from empty. Raw text:\n{_OpInfo.text[:300]}")
+				current = {}
 
-		# Apply canonical validation rules
+		# 3. External seeds only fill values NOT already present in the manifest
+		if external_opinfo:
+			for k, v in external_opinfo.items():
+				if k not in current:
+					current[k] = v
+
+		# 4. If the manifest has no op_version yet, pull from par.Version then family
+		if 'op_version' not in current:
+			if hasattr(_op, 'par') and _op.par['Version'] is not None:
+				current['op_version'] = str(_op.par.Version.eval())
+			elif hasattr(family_owner.par, 'Version'):
+				current['op_version'] = str(family_owner.par.Version.eval())
+
+		# 5. Canonical validation rules (overwrites fam_version/op_fam, fills missing)
 		ordered = self._apply_opinfo_rules(
-			OpInfo, family_owner,
-			fallback_name=display_name,
+			current, family_owner,
+			fallback_name=display_name or _op.name,
 			tox_file_version=tox_file_version,
 		)
 
-		# In-TD forces sanitized op_name/op_type regardless of source
+		# 6. In-TD forces sanitized op_name/op_type (strict for TD naming)
 		ordered['op_name'] = sanitize_name(ordered['op_name'])
 		ordered['op_type'] = sanitize_name(ordered['op_type'])
 
-		# Unwrap TD Dependency / DependList values so json.dumps doesn't loop
+		# 7. Unwrap TD Dependency / DependList so json.dumps doesn't loop
 		ordered = self._unwrap_for_json(ordered)
 
 		if _OpInfo:
@@ -329,7 +329,26 @@ class OpManager:
 				count += 1
 
 		count += self.deployManifestsToDisk(family_owner)
-		self.registry.FileManager.refresh_search_words_cache(family_name)
+
+		# Re-read external manifest JSONs (sidecars + folder manifests) so edits
+		# made on disk are picked up. refresh_cache rebuilds the search-words
+		# cache at the end; fall back to embedded-only rebuild if no folder.
+		operators_folder = family_owner.Properties.get('operators_folder')
+		if not operators_folder and hasattr(family_owner.par, 'Opfolder'):
+			operators_folder = family_owner.par.Opfolder.eval()
+		import os
+		if operators_folder and os.path.isdir(operators_folder):
+			self.registry.FileManager.refresh_cache(family_name, operators_folder)
+		else:
+			self.registry.FileManager.refresh_search_words_cache(family_name)
+
+		# Force-cook fam_create so OP_fam rebuilds from fresh manifest data (labels, types, etc.)
+		fam_create = family_owner.op('fam_create')
+		if fam_create:
+			fam_create.cook(force=True)
+
+		# Let the op-create dialog / menu / search pick up fresh labels & metadata
+		self.registry.global_ui_injector.refresh_after_deploy(family_name)
 		return count
 
 	def _unwrap_for_json(self, obj, seen=None):
@@ -379,9 +398,14 @@ class OpManager:
 		"""
 		import os
 		family_name = family_owner.Properties['family_name']
-		operators_folder = getattr(family_owner, 'operators_folder', None)
+		operators_folder = None
+
+		if not operators_folder:
+			operators_folder = family_owner.Properties.get('operators_folder')
+		if not operators_folder and hasattr(family_owner.par, 'Opfolder'):
+			operators_folder = family_owner.par.Opfolder.eval()
 		if not operators_folder or not os.path.isdir(operators_folder):
-			print(f"deployManifestsToDisk: no operators_folder for {family_name}")
+			# No Opfolder set, or it doesn't exist — family has no file-based ops. Normal.
 			return 0
 
 		fm = self.registry.FileManager
@@ -481,7 +505,6 @@ class OpManager:
 		if count:
 			self.registry.FileManager.refresh_cache(family_name, operators_folder)
 
-		print(f"deployManifestsToDisk[{family_name}]: {count} updated, {skipped} skipped, {len(tox_entries)} tox files")
 		return count
 
 	def _buildDiskManifest(self, family_owner, lookup_name, cache_entry, existing_manifest):

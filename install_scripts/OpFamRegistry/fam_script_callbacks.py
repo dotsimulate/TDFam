@@ -195,7 +195,9 @@ def cook(scriptOp):
                     node['score'] = 0
                     node['os'] = os_compat  # Add OS compatibility
 
-                    extra_words = search_words_dict.get(type.lower(), [])
+                    # Look up extra search words by op_type (opType column = op_type + fam_name).
+                    op_type_key = str(node['opType']).lower().replace(currFamily.lower(), '')
+                    extra_words = search_words_dict.get(op_type_key, [])
                     search_word_match = bool(searchString) and any(
                         w == searchString or w.startswith(searchString) for w in extra_words
                     )

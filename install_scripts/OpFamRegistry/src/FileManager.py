@@ -105,14 +105,22 @@ class FileManager:
 
 		search_words = {}
 
+		def _merge(op_type, words):
+			"""Union-merge preserving order; skips no-ops."""
+			if not op_type or not words:
+				return
+			key = op_type.lower()
+			existing = search_words.setdefault(key, [])
+			for w in words:
+				if w not in existing:
+					existing.append(w)
+
 		folder_cache = folder_cache_override if folder_cache_override is not None \
 			else installer.Properties.get('folder_cache', {})
 		for key, entry in (folder_cache or {}).items():
 			opinfo = (entry.get('manifest') or {}).get('OpInfo', {})
 			words = self._normalize_search_words(opinfo.get('search_words'))
-			if words:
-				op_type = (opinfo.get('op_type') or key).lower()
-				search_words[op_type] = words
+			_merge(opinfo.get('op_type') or key, words)
 
 		custom_ops = installer.operators_comp
 		if custom_ops:
@@ -125,10 +133,7 @@ class FileManager:
 				except Exception:
 					continue
 				words = self._normalize_search_words(opinfo.get('search_words'))
-				if not words:
-					continue
-				op_type = (opinfo.get('op_type') or manifest.parent().name).lower()
-				search_words[op_type] = words
+				_merge(opinfo.get('op_type') or manifest.parent().name, words)
 
 		self._search_words_cache[family_name] = search_words
 
