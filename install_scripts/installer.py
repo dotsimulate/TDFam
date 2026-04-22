@@ -187,8 +187,8 @@ class OpFamCreateExt:
             sys_registry.par.opshortcut = 'FAMREGISTRY'
             for family in previous_registered_fams.values():
                 sys_registry.RegisterFamily(family)
-            for fam_name in previous_installed_fams.keys():
-                sys_registry.InstallFamily(fam_name)
+            for family in previous_installed_fams.values():
+                sys_registry.InstallFamily(family)
 
         return sys_registry
 

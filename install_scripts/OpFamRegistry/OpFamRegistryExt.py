@@ -508,6 +508,13 @@ class OpFamRegistryExt:
 			return False
 		self.global_ui_injector.update_family_evals()
 		return True
+	
+	def UpdateFamilyOpComp(self, family_name, family_owner):
+		if not self.ValidateFamilyOwner(family_name, family_owner):
+			debug(f'UpdateFamilyOpComp ignored: owner mismatch for {family_name}')
+			return False
+		self.DeployManifests(family_name, family_owner)
+		return True
 
 	def UpdateCompatibleTable(self, family_name, family_owner):
 		if not self.ValidateFamilyOwner(family_name, family_owner):
@@ -522,6 +529,12 @@ class OpFamRegistryExt:
 			_val = _cell.val
 			if _val != prev[idx] and _val == 'None':
 				self._unregisterByName(prev[idx])
+
+	def RefreshCache(self, family_name, family_owner, operators_folder):
+		if not self.ValidateFamilyOwner(family_name, family_owner):
+			debug(f'RefreshCache ignored: owner mismatch for {family_name}')
+			return False
+		self.FileManager.refresh_cache(family_name, operators_folder)
 
 # endregion Family Management
 
@@ -874,6 +887,25 @@ class OpFamRegistryExt:
 		self._PostPlaceOp(family_name, placed)
 
 		return placed
+	
+	def DeployManifests(self, family_name, family_owner):
+		"""
+		Deploy or update on-disk sidecar JSON manifests for all operators in a family.
+		Useful for file-based operators that need on-disk manifests for OP Create menu
+		integration, and also for embedded operators if you want to expose their
+		manifests on disk for debugging or external tools.
+		"""
+		#validate owner
+		if not self.ValidateFamilyOwner(family_name, family_owner):
+			debug(f'DeployManifests: owner mismatch for {family_name}')
+			return False
+		family_owner = self.GetFamilyOwner(family_name)
+		if not family_owner:
+			debug(f'DeployManifests: family {family_name} not found')
+			return False
+
+		self.OpManager.deployManifestsToDisk(family_owner)
+		return True
 
 # endregion Operator Management
 

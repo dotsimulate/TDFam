@@ -298,6 +298,8 @@ class OpManager:
 		if not _StateRetain:
 			_StateRetain = manifest.create(textDAT, 'StateRetain')
 			_StateRetain.text = '{}'
+			_StateRetain.nodeX = manifest.op('Shortcuts').nodeX - 150
+			_StateRetain.nodeY = manifest.op('Shortcuts').nodeY
 		_dict = json.loads(_StateRetain.text)
 		if external_stateretain:
 			for k, v in external_stateretain.items():

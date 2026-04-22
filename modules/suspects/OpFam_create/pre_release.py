@@ -16,5 +16,7 @@ parent().par.Opfolder = ''
 parent().par.Opcomp = ''
 parent().par.Compatibletypes = ''
 parent().par.Callbackdat = op('default_callbacks')
-parent().pages[4].destroy()
+parent().customPages[4].destroy()
 parent().currentPage = 'Family'
+parent().par.Famuicomp.expr = 'me'
+parent().par.Famuicomp.mode = ParMode.EXPRESSION

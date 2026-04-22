@@ -42,7 +42,7 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
             self._ensure_family_info_dat()
 
             if self.operators_folder and not self.dynamic_refresh and self.fam_registry:
-                self.fam_registry.FileManager.refresh_cache(self.Properties['family_name'], self.operators_folder)
+                self.fam_registry.RefreshCache(self.Properties['family_name'], self.ownerComp, self.operators_folder)
 
 
     def _sync_parameters(self):
@@ -263,11 +263,14 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
 
     def onParIndex(self):
         self.Properties['index'] = int(self.ownerComp.par.Index.eval())
-        self.fam_registry.UpdateFamilyIndexOrder(self.Properties['family_name'], self.ownerComp)
+        if self.fam_registry:
+            self.fam_registry.UpdateFamilyIndexOrder(self.Properties['family_name'], self.ownerComp)
         
 
     def onParOpcomp(self):
         self.Properties['operators_comp'] = self.ownerComp.par.Opcomp.eval()
+        if self.fam_registry:
+            self.fam_registry.UpdateFamilyOpComp(self.Properties['family_name'], self.ownerComp)
 
     def onParOpfolder(self):
         self.Properties['operators_folder'] = self.ownerComp.par.Opfolder.eval()
@@ -430,9 +433,9 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
 
     def onParEnsuremanifests(self):
         if not self.fam_registry:
-            debug('Deploy Manifests: Family not registered')
+            debug('Deploy Manifests: No Registry')
             return
-        count = self.fam_registry.OpManager.deployManifests(self.ownerComp)
+        count = self.fam_registry.DeployManifests(self.Properties['family_name'], self.ownerComp)
         print(f'Deploy Manifests: Deployed to {count} operator(s)')
 
     # endregion
@@ -443,7 +446,7 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         # Ensure master operators have manifests deployed (handles migration
         # from old tag-based system where manifests may not exist yet)
         if self.fam_registry:
-            self.fam_registry.OpManager.deployManifests(self.ownerComp)
+            self.fam_registry.DeployManifests(self.Properties['family_name'], self.ownerComp)
 
         analysis = self._analyze_for_update(operators)
 

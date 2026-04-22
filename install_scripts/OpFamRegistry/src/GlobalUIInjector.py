@@ -512,32 +512,20 @@ elif(source == 'input' and ({compatible_check})):
 		"""Deploy opfam_popMenuCallbacks to nodetable and set expression on popMenu.par.Callbackdat."""
 		nodeTable = self.nodeTable
 		if not nodeTable:
-			debug('[_setup_popmenu_callbacks] nodeTable is None, aborting')
 			return
 
 		cb_name = 'opfam_popMenuCallbacks'
 		existing = nodeTable.op(cb_name)
-		debug(f'[_setup_popmenu_callbacks] existing={existing}')
 
 		# Create the callback DAT if it doesn't exist
 		if not existing:
 			source = self.ownerComp.op(cb_name)
-			debug(f'[_setup_popmenu_callbacks] source DAT in registry={source}')
 			if source:
 				existing = nodeTable.copy(source, name=cb_name)
-				debug(f'[_setup_popmenu_callbacks] copied from registry source, len={len(existing.text)}')
-			else:
-				existing = nodeTable.create(textDAT, cb_name)
-				import os
-				tox_path = self.ownerComp.par.externaltox.eval() or ''
-				cb_file = os.path.join(os.path.dirname(tox_path), 'src', 'opfam_popMenuCallbacks.py')
-				debug(f'[_setup_popmenu_callbacks] no source DAT, trying file: {cb_file} exists={os.path.exists(cb_file)} tox_path={tox_path}')
-				if os.path.exists(cb_file):
-					with open(cb_file, 'r') as f:
-						existing.text = f.read()
-					debug(f'[_setup_popmenu_callbacks] loaded from file, len={len(existing.text)}')
-				else:
-					debug(f'[_setup_popmenu_callbacks] FILE NOT FOUND: {cb_file}')
+			if not existing:
+				# something went very wrong if we can't find the source or create the op
+				debug("Error: Could not find source for popMenuCallbacks or create the op.")
+				return
 
 			# Position next to inject_opfam_registry
 			inject_op = nodeTable.op('inject_opfam_registry')
@@ -548,19 +536,16 @@ elif(source == 'input' and ({compatible_check})):
 				existing.nodeX = nodeTable.op('popMenuCallbacks').nodeX + 200 if nodeTable.op('popMenuCallbacks') else 0
 				existing.nodeY = nodeTable.op('popMenuCallbacks').nodeY if nodeTable.op('popMenuCallbacks') else 0
 
-		debug(f'[_setup_popmenu_callbacks] deployed DAT len={len(existing.text) if existing else "None"}')
-
 		# Set expression on popMenu.par.Callbackdat to auto-swap
 		popMenu = nodeTable.op('popMenu')
 		if popMenu:
 			fam_names = list(self.owner.InstalledFams.keys())
 			fam_list_str = str(fam_names)
 			popMenu.par.Callbackdat.expr = (
-				f"op('opfam_popMenuCallbacks') "
+				f"tdu.tryExcept(lambda: op.FAMREGISTRY.op('opfam_popMenuCallbacks'), op('popMenuCallbacks'))"
 				f"if op('/ui/dialogs/menu_op/current')[0,0].val in {fam_list_str} "
 				f"else op('popMenuCallbacks')"
 			)
-			debug(f'[_setup_popmenu_callbacks] popMenu.Callbackdat expr set for families={fam_list_str}')
 
 		self._inject_panelexec3()
 
@@ -899,11 +884,8 @@ elif(source == 'input' and ({compatible_check})):
 				is_family = all(abs(current[i] - rgb_color[i]) < 0.002 for i in range(3))
 				is_expected = all(abs(current[i] - expected[i]) < 0.002 for i in range(3))
 				is_old = old_rgb is not None and all(abs(current[i] - old_rgb[i]) < 0.002 for i in range(3))
-				debug(f"[_set_owner_colors] op={parent_op.path} op_color={op_color} expected={expected} current={current} is_default={is_default} is_family={is_family} is_expected={is_expected} is_old={is_old} old_rgb={old_rgb}")
 				if not is_default and not is_family and not is_expected and not is_old:
-					debug(f"[_set_owner_colors] SKIPPED op={parent_op.path} — custom color detected")
 					continue
-				debug(f"[_set_owner_colors] APPLYING color {expected} to {parent_op.path}")
 				parent_op.color = expected
 
 
