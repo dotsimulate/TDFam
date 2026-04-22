@@ -1,7 +1,7 @@
 '''Info Header Start
 Name : pre_release
-Author : DotSimulate@DOTOFFICE
-Saveorigin : opfam-create_dev.107.toe
+Author : Dan@DAN-4090
+Saveorigin : opfam-create_dev.64.toe
 Saveversion : 2023.12370
 Info Header End'''
 
@@ -17,3 +17,4 @@ parent().par.Opcomp = ''
 parent().par.Compatibletypes = ''
 parent().par.Callbackdat = op('default_callbacks')
 parent().pages[4].destroy()
+parent().currentPage = 'Family'
