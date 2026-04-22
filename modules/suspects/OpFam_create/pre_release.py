@@ -15,3 +15,5 @@ parent().par.Targetcomp = ''
 parent().par.Opfolder = ''
 parent().par.Opcomp = ''
 parent().par.Compatibletypes = ''
+parent().par.Callbackdat = op('default_callbacks')
+parent().pages[4].destroy()

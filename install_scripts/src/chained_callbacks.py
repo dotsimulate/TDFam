@@ -80,9 +80,6 @@ class ChainedCallbacksExt(CallbacksExt):
         Returns:
             The created callbacks DAT, or None if already exists
         """
-        if self.callbackDat:
-            return None
-
         if not template:
             return None
 

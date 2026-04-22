@@ -415,10 +415,18 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
         self._update_with_ui(operators)
 
     def onParCreatecallbacks(self):
-        template = self.ownerComp.op('callback_template')
+        template = self.ownerComp.op('default_callbacks')
         callbacks_dat = self.CreateCallbackDat(self.ownerComp, template)
         if callbacks_dat and hasattr(self.ownerComp.par, 'Callbackdat'):
+            callbacks_dat.tags.clear()
+            callbacks_dat.par.file = ''
             self.ownerComp.par.Callbackdat = callbacks_dat
+
+    def onParCallbackdat(self):
+        callbackDat = self.ownerComp.par.Callbackdat.eval()
+        defaultCallbacks = self.ownerComp.op('default_callbacks')
+        if not callbackDat:
+            self.ownerComp.par.Callbackdat = defaultCallbacks
 
     def onParEnsuremanifests(self):
         if not self.fam_registry:
