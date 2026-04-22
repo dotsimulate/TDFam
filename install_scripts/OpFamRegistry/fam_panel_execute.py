@@ -183,7 +183,7 @@ def onValueChange(panelValue, prev):
     clone = op.FAMREGISTRY.ext.OpFamRegistryExt.manageOpClone(family, opType, display_name)
 
     # Place OP
-    ui.panes.current.placeOPs([clone],inputIndex=0,outputIndex=0)		
+    placed = ui.panes.current.placeOPs([clone],inputIndex=0,outputIndex=0)
 
     parent.OPCREATE.par.winclose.pulse()
     op.FAMREGISTRY.CallHook(family, '_PostPlaceOp', clone)

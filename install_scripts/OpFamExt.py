@@ -39,6 +39,7 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
             )
 
             self._sync_parameters()
+            self._ensure_family_info_dat()
 
             if self.operators_folder and not self.dynamic_refresh and self.fam_registry:
                 self.fam_registry.FileManager.refresh_cache(self.Properties['family_name'], self.operators_folder)
@@ -61,6 +62,21 @@ class OpFamExt(ChainedCallbacksExt, OpFamCreateExt):
             self.Properties['naming_convention'] = p.Namingconvention.eval()
         if hasattr(p, 'Compatibletypes'):
             self.Properties['compatible_types'] = self._parse_compatible_types(p.Compatibletypes.eval())
+
+    def _ensure_family_info_dat(self):
+        """Create the optional family_info JSON DAT when it is missing."""
+        if self.ownerComp.op('family_info'):
+            return
+        try:
+            info_dat = self.ownerComp.create(textDAT, 'family_info')
+            info_dat.text = '''{
+    "summary": "",
+    "doc_url": "",
+    "support_url": "",
+    "PopMenu": []
+}'''
+        except Exception as e:
+            debug(f'Could not create family_info DAT: {e}')
 
     # region Properties
 

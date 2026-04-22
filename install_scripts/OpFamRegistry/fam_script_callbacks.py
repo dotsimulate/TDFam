@@ -108,8 +108,6 @@ def cook(scriptOp):
                 continue
             
             group_table = installer.op('group_mapping')
-            # print(f"\nGroup mapping table contents:")
-            # print(group_table.text)
 
             # Set up OS compatibility and exclude table
             os_table = installer.op('os_incompatible')
@@ -189,8 +187,6 @@ def cook(scriptOp):
                         group_name = ungrouped_label
                 else:
                     group_name = ''
-
-                #  print(f"Group: {group_name}")
 
                 if 'x' in compatible or type in compatible or (connectTo == 'DAT' and currFamily == familyOps):
                     node = {}

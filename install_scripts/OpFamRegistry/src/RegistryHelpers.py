@@ -172,14 +172,16 @@ def _is_default_gray(color, tol=0.002):
 
 def apply_family_color(family_owner, comp, op_color=None):
 	"""
-	Apply color to a freshly loaded file-based component.
-	Always sets color: op_color from manifest if provided, else family color.
-	No user-color check — tox color at load time is not a user choice.
+	Apply color to a placed component.
+	- If op_color is explicitly set in manifest, always apply it (regardless of Colorfileops).
+	- Otherwise fall back to family color, gated by Colorfileops toggle.
 	"""
-	if not (hasattr(family_owner.par, 'Colorfileops') and family_owner.par.Colorfileops.eval()):
+	if op_color and len(op_color) >= 3:
+		expected = tuple(op_color[:3])
+	elif hasattr(family_owner.par, 'Colorfileops') and family_owner.par.Colorfileops.eval():
+		expected = (family_owner.par.Colorr.eval(), family_owner.par.Colorg.eval(), family_owner.par.Colorb.eval())
+	else:
 		return
-	expected = _get_expected_color(family_owner, op_color)
-	debug(f"[apply_family_color] APPLYING color {expected} to {comp.path} (op_color={op_color})")
 	comp.color = expected
 
 def _filter_keys_by_rules(available_keys, rules, scenario):

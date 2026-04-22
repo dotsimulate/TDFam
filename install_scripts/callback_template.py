@@ -49,6 +49,30 @@ def onPostPlaceOp(info):
 	"""
 	pass
 
+def onSupportDot(info):
+	"""
+	Example callback for a manifest pop_menu item.
+
+	In family_info:
+		"PopMenu": [
+			{"label": "Support", "callback": "onSupportDot"}
+		]
+
+	Or in OpInfo:
+		"pop_menu": [
+			{"label": "Support", "callback": "onSupportDot"}
+		]
+
+	info keys:
+		family - family name
+		opType - OP Create menu op type
+		opLabel - OP Create menu label
+		item - clicked menu item label
+		menuEntry - original pop_menu entry dict
+		scope - 'family' for family_info.PopMenu, 'operator' for OpInfo.pop_menu
+	"""
+	pass
+
 def onPreStub(info):
 	"""
 	Called before stubbing an operator.

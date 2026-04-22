@@ -93,7 +93,6 @@ class FileManager:
 					optype_key = (((manifest_data or {}).get('OpInfo') or {}).get('op_type') or '').lower()
 					new_cache[optype_key if optype_key else key] = entry
 
-		print(f"{family_name}: Folder cache refreshed - {len(new_cache)} operators found")
 		installer.Properties['folder_cache'] = new_cache
 		self.refresh_search_words_cache(family_name, folder_cache_override=new_cache)
 

@@ -965,6 +965,15 @@ class OpFamRegistryExt:
 		info = {'clone': clone, 'about': 'Customize the placed operator'}
 		return self._dispatch_hook(fam_name, 'onPostPlaceOp', info)
 
+	def _PopMenuAction(self, fam_name, callback_name, info):
+		"""Dispatch a manifest pop_menu action to the owning family's callback DAT."""
+		if not callback_name:
+			return None
+		if info is None:
+			info = {}
+		info.setdefault('about', 'Called when a manifest pop_menu item is clicked')
+		return self._dispatch_hook(fam_name, callback_name, info)
+
 	def rebuildSummaries(self):
 		"""Rebuild the summaries table from all installed families' manifest OpInfo."""
 		import json
@@ -974,6 +983,10 @@ class OpFamRegistryExt:
 
 		summ_dat.clear()
 		for fam_name, installer in self.InstalledFams.items():
+			family_summary = self.getFamilyInfo(fam_name).get('summary', '')
+			if family_summary:
+				summ_dat.appendRow([fam_name, family_summary])
+
 			fam_ext = self.GetFamilyExt(fam_name)
 			if not fam_ext:
 				continue
@@ -1002,6 +1015,51 @@ class OpFamRegistryExt:
 					op_label = opinfo.get('op_label', key)
 					summ_dat.appendRow([f"{fam_name} {op_label}", summary])
 
+	def getFamilyInfo(self, fam_name):
+		"""Read the optional family_info DAT from a family owner."""
+		import json
+		installer = self.InstalledFams.get(fam_name)
+		if not installer:
+			return {}
+
+		info_dat = installer.op('family_info')
+		if not info_dat:
+			return {}
+
+		# Preferred: text DAT containing a JSON object.
+		try:
+			data = json.loads(info_dat.text)
+			return data if isinstance(data, dict) else {}
+		except:
+			pass
+
+		# Fallback: two-column table DAT: key, value. PopMenu value may be JSON.
+		if getattr(info_dat, 'isTable', False):
+			data = {}
+			for r in range(info_dat.numRows):
+				key = info_dat[r, 0].val if info_dat.numCols > 0 else ''
+				if not key or key.lower() in ('key', 'name'):
+					continue
+				value = info_dat[r, 1].val if info_dat.numCols > 1 else ''
+				if key == 'PopMenu':
+					try:
+						value = json.loads(value)
+					except:
+						value = []
+				data[key] = value
+			return data
+
+		return {}
+
+	def getFamilyPopMenuItems(self, fam_name):
+		"""Get family-level PopMenu items from family_info."""
+		items = self.getFamilyInfo(fam_name).get('PopMenu', [])
+		return items if isinstance(items, list) else []
+
+	def getSupportUrl(self, fam_name):
+		"""Get family-level support_url from family_info."""
+		return self.getFamilyInfo(fam_name).get('support_url')
+
 	def getPopMenuItems(self, fam_name, op_type):
 		"""Get pop_menu items from manifest OpInfo for an operator."""
 		installer = self.InstalledFams.get(fam_name)
@@ -1024,25 +1082,26 @@ class OpFamRegistryExt:
 		return []
 
 	def getDocUrl(self, fam_name, op_type):
-		"""Get doc_url from manifest OpInfo for an operator."""
+		"""Get doc_url from manifest OpInfo for an operator, then family_info."""
 		installer = self.InstalledFams.get(fam_name)
 		if not installer:
 			return None
 		op_comp = installer.par.Opcomp.eval() if hasattr(installer.par, 'Opcomp') else None
-		if not op_comp:
-			return None
-		op_name = op_type.replace(fam_name, '')
-		for child in op_comp.findChildren(maxDepth=1):
-			manifest = child.op('FamManifest')
-			if manifest and manifest.op('OpInfo'):
-				try:
-					import json
-					opinfo = json.loads(manifest.op('OpInfo').text)
-					if opinfo.get('op_type', '') == op_name or child.name == op_name:
-						return opinfo.get('doc_url')
-				except:
-					pass
-		return None
+		if op_comp:
+			op_name = op_type.replace(fam_name, '')
+			for child in op_comp.findChildren(maxDepth=1):
+				manifest = child.op('FamManifest')
+				if manifest and manifest.op('OpInfo'):
+					try:
+						import json
+						opinfo = json.loads(manifest.op('OpInfo').text)
+						if opinfo.get('op_type', '') == op_name or child.name == op_name:
+							doc_url = opinfo.get('doc_url')
+							if doc_url:
+								return doc_url
+					except:
+						pass
+		return self.getFamilyInfo(fam_name).get('doc_url')
 
 	def _PreStub(self, fam_name, comp):
 		info = {'comp': comp, 'opType': self._get_op_type(comp), 'about': 'Return False to skip stubbing this operator'}
