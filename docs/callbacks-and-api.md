@@ -1,12 +1,18 @@
 # Callbacks & API Reference
 
+## API Surfaces
+
+The TDFam family component is the developer-facing API surface. Its extension, `OpFamExt`, exposes the methods most family authors should call directly and routes lifecycle events into the family's callback DAT.
+
+The TD Registry, available as `op.FAMREGISTRY`, is documented internal infrastructure shared by all registered TDFam families in the project. TDFam components inject or update it, and the highest compatible TD Registry version wins. Family users and family developers should use the TDFam owner component API; TDFam calls the TD Registry on their behalf.
+
 ## Public API
 
-These methods are available on your TDFam installer extension instance.
+These methods are available on your TDFam family extension instance.
 
 ### `Install(install: bool = None)`
 
-Toggle family installation. Registers or unregisters with the Registry and injects or removes UI hooks. If `install` is `None`, reads from `par.Install`.
+Toggle family installation. TDFam registers or unregisters the family and injects or removes UI hooks. If `install` is `None`, reads from `par.Install`.
 
 ### `PlaceOp(target, op_type, name=None, x=None, y=None) -> OP`
 
@@ -36,7 +42,7 @@ The dict is keyed by operator type. Values include:
 
 Manifest values are merged with config-table data. `OpInfo.op_group` takes priority over `group_mapping`; external folder categories are used as a fallback group for file-based operators.
 
-### `GetOperatorSource(lookup_name: str) -> tuple | None`
+### `GetOpSource(lookup_name: str) -> tuple | None`
 
 Return the source for a specific operator: `("embedded", op)`, `("file", path)`, or `None`. Lookup uses manifest `op_type` when present, then filename/name fallbacks.
 
@@ -80,11 +86,11 @@ Export config to a dict when no path is provided, or write JSON to `path`. File 
 
 Import config from a dict, JSON string, or file path. Returns `(success: bool, message: str)`.
 
-## Registry Helpers
+## Internal TD Registry Notes
 
-Advanced integrations can call registry helpers through `op.FAMREGISTRY`, but the owner-comp API above is the usual entry point.
+The TD Registry methods below are documented to explain how TDFam coordinates multiple families. They are not the public family-developer API. They generally require a family name or family owner and validate the registered owner before mutating shared state.
 
-Useful registry calls include:
+Key internal TD Registry methods include:
 
 - `IsFamilyInstalled(fam_name)`
 - `IsFamilyUIInstalled(fam_name)`
@@ -93,7 +99,7 @@ Useful registry calls include:
 - `UpdateFamilyName(family_owner, new_name)`
 - `CallHook(fam_name, hook_name, *args)`
 
-Registry family operations validate the owner comp. A duplicate family name held by another owner is rejected; family renames refresh registry dictionaries, UI entries, tags, and manifest family references.
+TD Registry family operations validate the owner comp. A duplicate family name held by another owner is rejected; family renames refresh TD Registry dictionaries, UI entries, tags, and manifest family references.
 
 ## Callbacks
 
@@ -237,16 +243,6 @@ Called when `Ensuremanifests` deploys or validates a manifest on an embedded ope
 | `Shortcuts` | `dict` | Shortcut mappings. |
 
 External disk manifest deployment updates existing sidecars/folder entries directly and then refreshes caches and UI data.
-
-### Tag Filtering
-
-#### `onGetExcludedTags(info) -> set`
-
-Return tags to exclude from operator type resolution.
-
-#### `onGetCategoryTags(info) -> set`
-
-Return tags to treat as category tags during type resolution.
 
 ### Installation
 

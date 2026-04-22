@@ -1,8 +1,8 @@
 # Config Reference
 
-TDFam uses table DATs for visual configuration and JSON for portability. Runtime config lives in a Config DependDict and syncs with the tables.
+TDFam uses table DATs for visual family configuration and JSON for portability. The tables are the editable surface; TDFam syncs them into runtime config when building the family menu.
 
-Manifest fields are now the preferred place for per-operator metadata. Config tables still define family-level defaults and bulk presentation behavior.
+Manifest fields are the preferred place for per-operator metadata. Config tables define family-level defaults and bulk presentation behavior.
 
 ## Config Tables
 

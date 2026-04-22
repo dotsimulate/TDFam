@@ -23,7 +23,7 @@ Every placed operator gets a `FamManifest` child COMP containing DATs that defin
 
 | Key | Description |
 |-----|-------------|
-| `summary` | Family-level help summary. Added to the registry summaries table under the family name. |
+| `summary` | Family-level help summary. Added to the TD Registry summaries table under the family name. |
 | `doc_url` | Family documentation URL. Used as the right-click `Documentation` fallback when the operator has no `OpInfo.doc_url`. |
 | `support_url` | Optional support URL. Adds a built-in `Support` right-click item for this family. |
 | `PopMenu` | Family-level right-click menu entries. These appear before per-operator `OpInfo.pop_menu` entries. |
@@ -192,13 +192,13 @@ def onSupportDot(info):
     return
 ```
 
-Current fields consumed by code:
+Menu entry fields:
 
-| Field | Used by | Behavior |
-|-------|---------|----------|
-| `label` | `opfam_popMenuCallbacks.onOpen()` and injected `panelexec3` code | Text appended to `popMenu.par.Items`. Empty labels are skipped by `onOpen()`. |
-| `disabled` | `opfam_popMenuCallbacks.onOpen()` and injected `panelexec3` code | When truthy, the label is appended to `popMenu.par.Disableditems`. |
-| `callback` | `opfam_popMenuCallbacks.onClick()` | Family callback DAT function name. The click routes through the registry and calls `ownerComp.ext.OpFamExt.DoCallback(callback, info)`. |
+| Field | Behavior |
+|-------|----------|
+| `label` | Menu item text. Empty labels are skipped. |
+| `disabled` | When truthy, the item is shown disabled. |
+| `callback` | Family callback DAT function name. The click routes through TDFam and calls `ownerComp.ext.OpFamExt.DoCallback(callback, info)`. |
 
 The built-in `Documentation` item is always present. It is enabled only when `doc_url` is defined.
 The built-in `Support` item appears when `family_info.support_url` is defined.

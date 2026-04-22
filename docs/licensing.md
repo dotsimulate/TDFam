@@ -4,8 +4,8 @@ TDFam is licensed under the Apache License, Version 2.0. See the root
 `LICENSE` file for the full license text and the root `NOTICE` file for
 project attribution notices.
 
-This page explains the intended licensing boundary for people using TDFam to
-build and distribute TouchDesigner operator families.
+This page explains the intended licensing boundary for projects that use TDFam
+to build and distribute TouchDesigner operator families.
 
 ## What the TDFam License Covers
 
