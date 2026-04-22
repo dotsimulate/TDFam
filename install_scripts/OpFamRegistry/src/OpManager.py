@@ -18,7 +18,7 @@ class OpManager:
 			debug("Error: 'prep' operator not found in FAMREGISTRY")
 			prep_place = None
 		if prep_place is None:
-			prep_place = installer.op('OpFamRegistry/prep')
+			prep_place = installer.op('TDFamRegistry/prep')
 
 		is_file_based = False
 
@@ -298,8 +298,8 @@ class OpManager:
 		if not _StateRetain:
 			_StateRetain = manifest.create(textDAT, 'StateRetain')
 			_StateRetain.text = '{}'
-			_StateRetain.nodeX = manifest.op('Shortcuts').nodeX - 150
-			_StateRetain.nodeY = manifest.op('Shortcuts').nodeY
+			_StateRetain.nodeX = manifest.op('Shortcuts').nodeX
+			_StateRetain.nodeY = manifest.op('Shortcuts').nodeY - 150
 		_dict = json.loads(_StateRetain.text)
 		if external_stateretain:
 			for k, v in external_stateretain.items():

@@ -207,7 +207,7 @@ class ExtUpdater:
 		self.MockUpdate()
 		#iop.Downloader.par.Download.pulse()
 
-	def MockUpdate(self, source_path='/OpFamRegistry'):
+	def MockUpdate(self, source_path='/TDFamRegistry'):
 		"""
 		Mock update for testing - bypasses GitHub download.
 
@@ -217,7 +217,7 @@ class ExtUpdater:
 
 		Args:
 			source_path: Path to component to use as update source.
-						 Defaults to '/OpFamRegistry'.
+						 Defaults to '/TDFamRegistry'.
 		"""
 		source_comp = op(source_path)
 		if not source_comp:
@@ -231,10 +231,10 @@ class ExtUpdater:
 			return
 
 		# Clean up any existing mock comp
-		existing = sys_comp.op('OpFamRegistry')
+		existing = sys_comp.op('TDFamRegistry')
 		if existing:
 			existing.destroy()
-		newComp = sys_comp.copy(source_comp, name='OpFamRegistry')
+		newComp = sys_comp.copy(source_comp, name='TDFamRegistry')
 		if not newComp:
 			debug(f'MockUpdate: Failed to copy source component to /sys/quiet')
 			return

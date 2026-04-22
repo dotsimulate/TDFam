@@ -72,7 +72,7 @@ class OpFamRegistryExt:
 		global_registry = op.FAMREGISTRY if hasattr(op, 'FAMREGISTRY') else None
 		if not global_registry:
 			# No existing global registry - become it
-			debug('OpFamRegistry: No existing global registry found. Becoming global registry.')
+			debug('TDFamRegistry: No existing global registry found. Becoming global registry.')
 			self._become_global_registry()
 			return
 
@@ -81,27 +81,29 @@ class OpFamRegistryExt:
 
 		if should_keep_existing:
 			# Existing registry is same or newer
-			debug(f'OpFamRegistry: Existing registry at {global_registry.path} is same or newer.')
+			debug(
+				f'TDFamRegistry: Existing registry at {global_registry.path} is same or newer.')
 			# Transfer any families we might have to the existing registry
 			# self._transfer_families_to(global_registry)
 		else:
 			# We are newer - replace the existing registry
-			debug(f'OpFamRegistry: We are newer than existing registry at {global_registry.path}. Replacing it.')
+			debug(
+				f'TDFamRegistry: We are newer than existing registry at {global_registry.path}. Replacing it.')
 			self._replace_global_registry(global_registry)
 
 	def _become_global_registry(self):
 		"""
-		Become the global registry at /sys/OpFamRegistry.
+		Become the global registry at /sys/TDFamRegistry.
 
-		If already at /sys/OpFamRegistry, just sets the shortcut.
+		If already at /sys/TDFamRegistry, just sets the shortcut.
 		Otherwise, copies ourselves to /sys, positions relative to TDDialogs,
 		transfers families, and destroys the original.
 
 		Follows installer.py's _get_or_create_fam_registry pattern.
 		"""
-		sys_registry_path = '/sys/OpFamRegistry'
+		sys_registry_path = '/sys/TDFamRegistry'
 
-		# If we're already at /sys/OpFamRegistry, just set the shortcut
+		# If we're already at /sys/TDFamRegistry, just set the shortcut
 		if self.ownerComp.path == sys_registry_path:
 			self.ownerComp.par.opshortcut = 'FAMREGISTRY'
 			return
@@ -109,11 +111,11 @@ class OpFamRegistryExt:
 		# We need to copy ourselves to /sys (same as installer.py)
 		sys_comp = op('/sys')
 		if not sys_comp:
-			debug('OpFamRegistry: /sys not found, cannot become global registry.')
+			debug('TDFamRegistry: /sys not found, cannot become global registry.')
 			return
 
 		# Copy ourselves to /sys
-		new_registry = sys_comp.copy(self.ownerComp, name='OpFamRegistry')
+		new_registry = sys_comp.copy(self.ownerComp, name='TDFamRegistry')
 		new_registry.allowCooking = True
 		new_registry.op('internal_pars').par.Dev = False
 		new_registry.op('internal_pars').par.Force = False
@@ -133,7 +135,7 @@ class OpFamRegistryExt:
 		new_registry.store('InstalledFams', dict(self.ownerComp.fetch('InstalledFams', {})))
 		new_registry.store('ShortcutDict', self.ownerComp.fetch('ShortcutDict', {}))
 
-		debug(f'OpFamRegistry: Copied to {new_registry.path}.')
+		debug(f'TDFamRegistry: Copied to {new_registry.path}.')
 
 		# Destroy ourselves
 		# run(lambda: self.ownerComp.destroy(), delayFrames=1, delayRef=op.TDResources)
@@ -208,7 +210,7 @@ class OpFamRegistryExt:
 			their_str = '.'.join(str(x) for x in their_version)
 			choice = ui.messageBox(
 				'Registry Version Conflict',
-				f'Multiple OpFamRegistry versions detected.\n\n'
+				f'Multiple TDFamRegistry versions detected.\n\n'
 				f'Existing: v{their_str} at {other_registry.path}\n'
 				f'New: v{our_str} at {self.ownerComp.path}\n\n'
 				f'Which version should be used?',

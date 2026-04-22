@@ -1,4 +1,4 @@
-"""
+﻿"""
 Update system for opfam-create.
 
 Handles updating operators to newer versions while preserving

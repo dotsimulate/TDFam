@@ -153,7 +153,7 @@ class OpFamCreateExt:
         return (True, None)
 
     def _get_or_create_fam_registry(self, force=False):
-        sys_registry_path = '/sys/OpFamRegistry'
+        sys_registry_path = '/sys/TDFamRegistry'
         sys_registry = op(sys_registry_path)
 
         internal = self.ownerComp.op('internal_pars')
@@ -174,11 +174,11 @@ class OpFamCreateExt:
             sys_registry = None
 
         if not sys_registry:
-            template = self.ownerComp.op('OpFamRegistry')
+            template = self.ownerComp.op('TDFamRegistry')
             if template:
                 sys = op('/sys')
                 if sys:
-                    sys_registry = sys.copy(template, name='OpFamRegistry')
+                    sys_registry = sys.copy(template, name='TDFamRegistry')
                     sys_registry.allowCooking = True
                     sys_registry.nodeX = sys.op('TDDialogs').nodeX
                     sys_registry.nodeY = sys.op('TDDialogs').nodeY - 200
@@ -222,7 +222,7 @@ class OpFamCreateExt:
             except:
                 return None
             
-        template = self.ownerComp.op('OpFamRegistry')
+        template = self.ownerComp.op('TDFamRegistry')
         if not template:
             return True  # No template, keep existing
 

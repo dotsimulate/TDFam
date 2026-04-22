@@ -1,4 +1,4 @@
-import re
+﻿import re
 
 # example_retention_data = {
 # 	".": ["!Period:stub", "!<About>:update", "Help"],  # self: default all custom, with exclusions

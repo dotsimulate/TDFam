@@ -1,4 +1,4 @@
-"""
+﻿"""
 Stub system for opfam-create.
 
 Handles creating lightweight stubs from operators and replacing them
