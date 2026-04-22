@@ -2,129 +2,140 @@
 
 ## What TDFam Does
 
-TDFam lets you create custom operator families that appear in TouchDesigner's TAB menu. You define a set of operators (as `.tox` files or embedded COMPs), configure how they're grouped and labeled, and TDFam handles registration, menu injection, placement, stubbing, and updates.
+TDFam lets you create custom operator families that appear in TouchDesigner's TAB menu. You define a set of operators as embedded COMPs or external `.tox` files, configure how they are grouped and labeled, and TDFam handles registration, menu injection, placement, stubbing, and updates.
 
-## Architecture: Two Halves
+## Architecture
 
-### TDFam (the Owner Comp)
+### TDFam Owner Comp
 
-This is your family component — the thing you configure and ship. It runs the `OpFamExt` extension and exposes parameters for:
+This is the family component you configure and ship. It runs the `OpFamExt` extension and exposes parameters for:
 
-- **Family identity** — name, color, index
-- **Operator sources** — embedded `custom_operators` COMP and/or a path to an external `.tox` folder
-- **Config tables** — DATs that control grouping, labeling, sorting, and OS compatibility
-- **Callbacks DAT** — optional Python DAT with hooks into the operator lifecycle
+- Family identity: name, color, index, version
+- Operator sources: embedded `custom_operators` COMP and/or external `.tox` folder
+- Config tables: grouping, labels, sort behavior, and OS compatibility
+- Callbacks DAT: optional hooks into placement, stubbing, replacement, updates, and install events
 
-The TDFam comp owns configuration and dynamic state. It talks to the Registry to request actions (place, stub, update) but doesn't touch the network directly.
+The TDFam comp owns configuration and dynamic state. You customize behavior through parameters, manifests, config tables, and callbacks.
 
-You customize behavior through **parameters and callbacks** — not by subclassing or editing library code.
+### Registry
 
-### Registry (`op.FAMREGISTRY`)
+`op.FAMREGISTRY` is a singleton component that manages registered families. It owns network-facing work:
 
-A singleton component that manages all registered families. It owns everything that touches the network:
+- UI injection into `/ui/dialogs/menu_op`
+- Operator placement and clone preparation
+- Manifest creation, validation, tagging, and disk deployment
+- Stub, replace, and update logic
+- External folder scanning, version parsing, and source resolution
+- Help text, right-click menu, color, and compatibility injection
 
-- **UI injection** — modifies `/ui/dialogs/menu_op` to add your family to the TAB menu
-- **Operator placement** — clones operators into the target network
-- **Manifest management** — creates and validates FamManifest components on placed operators
-- **Stub/Update logic** — creates stubs, replaces them, updates operators to newer versions
-- **File loading** — scans external folders, parses versions, caches operator sources
+Most project code should interact with the registry through the TDFam owner comp API.
 
-The Registry is stable infrastructure. You don't modify it — you interact with it through your TDFam comp.
+## Family Info
 
-### How They Interact
+Each family can have a `family_info` JSON DAT on the owner comp. Its top-level keys are `summary`, `doc_url`, `support_url`, and `PopMenu`. This is family-level metadata: it applies to the family as a whole, not to one operator.
 
-```
-Developer
-  │
-  ▼
-TDFam Comp ──── parameters, config tables, callbacks DAT
-  │
-  │  Register / PlaceOp / StubOp / UpdateOp
-  ▼
-Registry ────── UI injection, manifest management, network operations
-  │
-  ▼
-TouchDesigner network (placed operators, stubs)
-```
-
-## Core Concepts
-
-### Operator Sources
+## Operator Sources
 
 Operators can come from two places:
 
-- **Embedded** — COMPs inside a `custom_operators` container within your TDFam comp. These are disabled base COMPs that get cloned on placement. Set via `par.Opcomp`.
-- **File-based** — `.tox` files in an external folder. Supports versioned filenames like `my_op_v1.2.3.tox`. Set via `par.Opfolder`.
+- Embedded: COMPs inside the family `Opcomp` / `custom_operators` container.
+- File-based: `.tox` files in an external `Opfolder`.
 
-When both sources provide the same operator, the one with the higher version wins. Ties go to embedded.
+Versioned file names use the configured naming convention, defaulting to:
 
-### Manifests
+```text
+(.+)_v(\d+\.\d+\.\d+)\.tox$
+```
 
-Every placed operator gets a `FamManifest` child COMP containing:
+When both embedded and file-based sources provide the same operator, the higher version wins. Ties go to embedded. File-based operators can also use sidecar JSON or folder `manifest.json` files; when `OpInfo.op_type` exists, it becomes the cache and lookup key instead of the filename-derived key.
+
+## Manifests
+
+Every placed COMP operator gets a `FamManifest` child COMP. A manifest contains:
 
 | DAT | Purpose |
 |-----|---------|
-| `OpInfo` | Operator identity — type, name, label, version, family |
-| `ParRetain` | Rules for which parameters to preserve across stub/update |
-| `StateRetain` | Rules for preserving non-parameter state (extensions, storage, DATs) |
-| `Shortcuts` | Keyboard shortcut mappings |
+| `OpInfo` | Operator identity and menu metadata. |
+| `ParRetain` | Parameters to preserve across stub and update operations. |
+| `StateRetain` | Non-parameter state to preserve: extension storage, raw storage, and DATs. |
+| `Shortcuts` | Keyboard shortcut mappings. |
 
-Manifests are the operator's source of truth for identity. The system uses manifest data (not naming conventions) to match operators during updates.
+Manifests are the source of truth for operator identity. `OpInfo` can also drive menu presentation with fields such as `op_group`, `summary`, `doc_url`, `op_color`, `isFilter`, `compatible_types`, `search_words`, and `pop_menu`.
 
-### Tags
+External manifests support the same sections as in-TD manifests:
 
-TDFam uses TD's tagging system to find and identify placed operators:
+- Per-op sidecar JSON next to a `.tox`
+- Category-folder `manifest.json`
+- Root-folder `manifest.json`
 
-- `<FAM:YourFamily>` — marks membership in a family
-- `<TYPE:op_type>` — identifies the operator type
-- `<MANIFEST>` — has a full manifest (not a stub)
-- `<STUB>` — is a stub
+Sidecars take priority over folder manifests. Existing in-TD manifest values take priority over external seeds when a loaded operator already has a manifest.
 
-### Stubs
+## Tags
 
-Stubs are lightweight placeholders that replace full operators. A stub preserves:
+TDFam uses TD tags to find and identify operators:
+
+- `<FAM:YourFamily>` marks family membership.
+- `<TYPE:op_type>` identifies the operator type.
+- `<MANIFEST>` marks a full manifest.
+- `<STUB>` marks a stub.
+
+Family rename logic refreshes these tags and manifest family references on masters and placed instances so the registry does not keep stale family names.
+
+## Config Tables vs Manifests
+
+Manifests define operator identity and optional per-operator metadata. Config tables define family-level defaults and menu presentation:
+
+- `group_mapping` controls default grouping and custom group order.
+- `label_replacements` applies label text replacements.
+- `os_incompatible` hides or disables operators by platform.
+- `settings` controls sort and ungrouped behavior.
+
+When both sources provide a value, manifest data is more specific. For example, `OpInfo.op_group` takes priority over `group_mapping`; file-based operators then fall back to their category folder if no manifest/config group exists.
+
+## Menu Integration
+
+TDFam injects custom families into the OP Create dialog. Recent menu behavior is manifest-aware:
+
+- `summary` values are merged into the OP Create help text summaries.
+- `family_info.doc_url` provides the family-level documentation fallback.
+- `family_info.support_url` adds a built-in `Support` item.
+- `family_info.PopMenu` adds family-level right-click entries.
+- `OpInfo.doc_url` overrides documentation for one embedded operator.
+- `OpInfo.pop_menu` adds per-operator right-click entries for embedded menu entries and can route clicks to functions in the family callback DAT.
+- `isFilter` selects filter vs generator menu layouts.
+- `search_words` adds extra search matches beyond name and label.
+- `op_color` applies per-operator network color.
+
+Right-clicking an operator entry opens the custom pop menu and does not place the operator.
+
+## Stubs and Updates
+
+Stubs are lightweight placeholders that preserve:
 
 - Network position and size
 - Input/output connections
-- Parameter values (governed by ParRetain rules)
-- Non-parameter state (governed by StateRetain rules)
+- Parameter values governed by `ParRetain`
+- Extension storage, raw storage, and DAT contents governed by `StateRetain`
 - Cooking and bypass state
 
-Stubs reduce project file size and load time. When you need the full operator back, the system replaces the stub with a fresh clone and restores preserved state.
+Replacing a stub or updating an operator loads a fresh source, validates its manifest, restores retained state, reapplies colors, and runs the relevant callbacks.
 
-### Config Tables vs Manifests
+## Config Sync
 
-These serve different purposes:
+Configuration flows between DAT tables, the runtime Config DependDict, and JSON import/export:
 
-- **Manifests** define operator **identity** — what an operator _is_ (type, version, label, retention rules). Manifests live inside the operator.
-- **Config tables** define operator **presentation** — how operators appear in the menu (grouping, label overrides, sort order, OS filtering). Config tables live in your TDFam comp.
-
-### Callbacks
-
-TDFam provides hooks at every stage of the operator lifecycle. Implement these in a callbacks DAT (pulse `par.Createcallbacks` to generate one from the template, then set `par.Callbackdat` to point at it).
-
-Callbacks follow a consistent pattern:
-- **Pre-callbacks** (`onPreStub`, `onPreUpdate`, etc.) — can modify behavior or cancel the operation by returning `False`
-- **Post-callbacks** (`onPostPlaceOp`, `onPostStub`, etc.) — react to completed operations
-- **Capture callbacks** (`onCaptureExtraInfo`) — store arbitrary data for restoration later
-
-### Config Sync
-
-Configuration flows bidirectionally between three representations:
-
-```
-DAT Tables  ◄──►  Config DependDict  ◄──►  JSON
-(visual)          (source of truth)        (portable)
+```text
+DAT Tables <-> Config DependDict <-> JSON
 ```
 
-Edit tables in TD's UI, or import/export JSON for version control. Changes sync automatically through the Config DependDict.
+Edit tables in TD's UI, or import/export JSON for version control. Changes sync through the Config DependDict.
 
 ## Operator Lifecycle
 
-1. **Install** — Family registers with Registry, UI hooks injected into TAB menu
-2. **Place** — User selects from TAB menu, operator cloned into network with manifest
-3. **Use** — Operator functions normally in the network
-4. **Stub** — Convert to lightweight placeholder (preserves state per retention rules)
-5. **Replace** — Restore stub to full operator
-6. **Update** — Replace with newer version (preserves state per retention rules)
-7. **Uninstall** — Family deregistered, UI hooks removed
+1. Install: family registers with the Registry and injects UI hooks.
+2. Place: user selects from the TAB menu; TDFam prepares the clone, validates manifest data, applies color/shortcuts, and places it.
+3. Use: operator functions normally in the network.
+4. Stub: full operator becomes a lightweight placeholder with retained state.
+5. Replace: stub is restored to a full operator.
+6. Update: operator is replaced by a newer source while retaining configured state.
+7. Uninstall: family deregisters and UI hooks are removed.

@@ -1,6 +1,8 @@
 # Config Reference
 
-TDFam uses table DATs for visual configuration and JSON for portability. Changes sync bidirectionally through a Config DependDict (the runtime source of truth).
+TDFam uses table DATs for visual configuration and JSON for portability. Runtime config lives in a Config DependDict and syncs with the tables.
+
+Manifest fields are now the preferred place for per-operator metadata. Config tables still define family-level defaults and bulk presentation behavior.
 
 ## Config Tables
 
@@ -13,57 +15,105 @@ Key/value pairs controlling menu behavior.
 | `sort_within_group` | `alphabetical`, `by_name`, `custom` | `alphabetical` | How operators are sorted within groups. `custom` uses row order in `group_mapping`. |
 | `ungrouped_label` | any string | `Other` | Group header for operators not assigned to any group. |
 | `show_ungrouped` | `0`, `1` | `1` | Whether to show ungrouped operators in the menu. |
-| `exclude_behavior` | `hide`, `disable` | `hide` | What to do with excluded/incompatible operators — hide them entirely or show them disabled. |
+| `exclude_behavior` | `hide`, `disable` | `hide` | What to do with excluded/incompatible operators: hide them or show them disabled. |
 
 ### `group_mapping`
 
-Controls operator grouping and ordering in the TAB menu.
+Controls default operator grouping and optional custom sort order.
 
-- **Row 0** (header) = group names. Column order determines display order in the menu.
-- **Rows 1+** = operator names listed under each group column.
+- Row 0 contains group names.
+- Column order determines display order.
+- Rows 1+ contain operator names under each group.
+- Empty cells are ignored.
 
-Each column is a list of operators belonging to that group. Empty cells are ignored.
-
-Example table:
+Example:
 
 | Generators | Filters | Utility |
-|-----------|---------|---------|
+|------------|---------|---------|
 | noise_gen | blur | inspector |
 | color_ramp | sharpen | |
 
+Group resolution order:
+
+1. `OpInfo.op_group`
+2. `group_mapping`
+3. File-based category folder
+4. `settings.ungrouped_label`, if ungrouped operators are shown
+
 ### `label_replacements`
 
-String find/replace rules applied to auto-generated operator labels.
+String find/replace rules applied to generated labels.
 
 | Column | Description |
 |--------|-------------|
-| `find` | String to search for |
-| `replace` | Replacement string |
+| `find` | String to search for. |
+| `replace` | Replacement string. |
 
-Example: find `_` → replace ` ` turns `noise_gen` into `noise gen`.
-
-Applied in row order. The JSON import also accepts the legacy key `replace_index`.
+Rules are applied in row order. JSON import also accepts the legacy key `replace_index`.
 
 ### `os_incompatible`
 
-OS compatibility and exclusion flags. Only operators that deviate from the default (compatible everywhere) need entries here.
+OS compatibility and exclusion flags. Only operators that deviate from the default need entries.
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `operator_name` | string | Operator name |
-| `windows` | `0`/`1` | `1` = compatible with Windows, `0` = incompatible |
-| `mac` | `0`/`1` | `1` = compatible with Mac, `0` = incompatible |
-| `exclude` | `0`/`1` | `1` = excluded from menu regardless of OS |
+| `operator_name` | string | Operator name. |
+| `windows` | `0`/`1` | `1` = compatible with Windows, `0` = incompatible. |
+| `mac` | `0`/`1` | `1` = compatible with Mac, `0` = incompatible. |
+| `exclude` | `0`/`1` | `1` = excluded from menu regardless of OS. |
 
-Operators not listed default to `windows=1, mac=1, exclude=0` (compatible everywhere). Incompatible/excluded operators are handled according to `exclude_behavior` in settings (hidden or disabled).
+Operators not listed default to `windows=1`, `mac=1`, `exclude=0`. Incompatible or excluded operators are handled according to `settings.exclude_behavior`.
 
----
+## Manifest-Driven Menu Data
+
+Use `family_info` for family-level menu data and `OpInfo` for per-operator menu data.
+
+`family_info` is a JSON DAT on the owner comp:
+
+```json
+{
+  "summary": "",
+  "doc_url": "",
+  "support_url": "",
+  "PopMenu": []
+}
+```
+
+| OpInfo field | Effect |
+|--------------|--------|
+| `op_group` | Assigns the operator to a menu group. |
+| `op_label` | Sets the display label before label replacements are applied. |
+| `summary` | Adds help text in the OP Create dialog. |
+| `doc_url` | Enables the right-click `Documentation` item for embedded menu entries. |
+| `pop_menu` | Adds custom right-click menu entries for embedded menu entries. Clicks can route to functions in the family callback DAT. |
+| `op_color` | Applies a per-operator network color. |
+| `isFilter` | Chooses filter vs generator menu display. |
+| `compatible_types` | Overrides append/connect compatibility for this operator. |
+| `search_words` | Adds extra search terms. |
+
+| family_info key | Effect |
+|-----------------|--------|
+| `summary` | Adds a family-level help summary. |
+| `doc_url` | Provides the family documentation fallback. |
+| `support_url` | Adds the built-in `Support` right-click item. |
+| `PopMenu` | Adds family-level right-click entries. |
+
+## Family Parameters That Affect Config
+
+| Parameter | Description |
+|-----------|-------------|
+| `Family` | Family name. Rename is rejected if another owner already holds the name; accepted renames update registry/UI references and manifest tags. |
+| `Colorr`, `Colorg`, `Colorb` | Family menu/network color. Existing placed ops are updated only when they still match the old family color; custom colors are preserved. |
+| `Colorfileops` | Applies the family color to file-based operators when they do not define `OpInfo.op_color`. |
+| `Opcomp` | Embedded operator source container. |
+| `Opfolder` | External `.tox` source folder. |
+| `Namingconvention` | Regex used to parse file-based operator names and versions. |
+| `Compatibletypes` | Family-level append/connect compatibility types. |
+| `Ensuremanifests` | Validates embedded manifests and updates existing external manifest JSON entries. |
 
 ## JSON Import/Export
 
-Use `ExportConfig()` and `ImportConfig()` to move configuration in and out of JSON. This is useful for version control or sharing configs between projects.
-
-### JSON Format
+Use `ExportConfig()` and `ImportConfig()` to move family config in and out of JSON.
 
 ```json
 {
@@ -94,24 +144,9 @@ Use `ExportConfig()` and `ImportConfig()` to move configuration in and out of JS
 }
 ```
 
-### `tables.group_mapping`
-
-Object where keys are group names and values are arrays of operator names belonging to that group. Group order in JSON doesn't map to display order — column order in the DAT table determines that.
-
-### `tables.label_replacements`
-
-Object mapping find strings to replace strings. Corresponds to the `label_replacements` DAT table.
-
-### `tables.os_incompatible`
-
-Object keyed by operator name. Each value has `windows`, `mac`, and `exclude` integer flags.
-
-### `settings`
-
-Flat key/value object matching the `settings` table.
-
 ### Notes
 
 - `ImportConfig` replaces each top-level key present in the JSON but leaves absent keys unchanged.
-- All table fields in the JSON are optional. Omitted tables are left unchanged.
-- `ExportConfig()` with no arguments returns a Python dict. Pass a file path to write JSON to disk.
+- All table fields are optional. Omitted tables are left unchanged.
+- `ExportConfig()` with no arguments returns a Python dict.
+- Passing a file path to `ExportConfig(path)` writes JSON to disk.
