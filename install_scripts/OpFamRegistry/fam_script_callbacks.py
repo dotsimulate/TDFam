@@ -173,6 +173,11 @@ def cook(scriptOp):
 
                 label = familyOps[i,'label'].val
                 isFilter = familyOps[i,'type'].val == f'layouts/{currFamily}/defFilter'
+                _fc = installer.Properties.get('folder_cache', {})
+                _entry = _fc.get(normalized_type) or _fc.get(type.lower())
+                _manifest_is_filter = ((_entry or {}).get('manifest') or {}).get('OpInfo', {}).get('isFilter')
+                if _manifest_is_filter is not None:
+                    isFilter = bool(_manifest_is_filter)
 
                 os_compat = os_values.get(normalized_type, '1')
 

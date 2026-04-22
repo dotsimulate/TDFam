@@ -71,12 +71,16 @@ def onCook(scriptOp):
 
         # Get the source OP ref for inputConnectors and generator check
         source_type, source_ref = op_data['source']
+        manifest_is_filter = op_data.get('isFilter')
         if source_type == 'embedded':
             maxinputs = 9999 if source_ref.name == 'composite' else len(source_ref.inputConnectors)
-            node_type = types[source_ref in generators]
+            if manifest_is_filter is not None:
+                node_type = types[0] if manifest_is_filter else types[1]
+            else:
+                node_type = types[source_ref in generators]
         else:
-            maxinputs = 0
-            node_type = types[0]
+            maxinputs = op_data.get('maxInputs', 0)
+            node_type = types[0] if (manifest_is_filter is None or manifest_is_filter) else types[1]
 
         opType = op_data['op_type'] + fam_name
         scriptOp.appendRow([

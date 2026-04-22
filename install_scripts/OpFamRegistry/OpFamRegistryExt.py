@@ -780,6 +780,7 @@ class OpFamRegistryExt:
 					'group': op_info.get('op_group') or group_index.get(normalized) or None,
 					'source': source,
 					'os_compatible': os_index.get(normalized, {'windows': 1, 'mac': 1, 'exclude': 0}),
+					'isFilter': op_info.get('isFilter'),
 				}
 
 			elif source[0] == 'file':
@@ -807,6 +808,7 @@ class OpFamRegistryExt:
 					'source': source,
 					'os_compatible': os_index.get(normalized, {'windows': 1, 'mac': 1, 'exclude': 0}),
 					'compatible_types': ext_opinfo.get('compatible_types', []),
+					'isFilter': ext_opinfo.get('isFilter'),
 				}
 
 		return result
@@ -975,21 +977,30 @@ class OpFamRegistryExt:
 			fam_ext = self.GetFamilyExt(fam_name)
 			if not fam_ext:
 				continue
+
+			# In-TD ops: read from embedded FamManifest/OpInfo DATs
 			op_comp = fam_ext.operators_comp
-			if not op_comp:
-				continue
-			for child in op_comp.findChildren(maxDepth=1):
-				manifest = child.op('FamManifest')
-				if manifest and manifest.op('OpInfo'):
-					try:
-						opinfo = json.loads(manifest.op('OpInfo').text)
-						op_label = opinfo.get('op_label', child.name)
-						summary = opinfo.get('summary', '')
-						if summary:
-							key = f"{fam_name} {op_label}"
-							summ_dat.appendRow([key, summary])
-					except:
-						pass
+			if op_comp:
+				for child in op_comp.findChildren(maxDepth=1):
+					manifest = child.op('FamManifest')
+					if manifest and manifest.op('OpInfo'):
+						try:
+							opinfo = json.loads(manifest.op('OpInfo').text)
+							op_label = opinfo.get('op_label', child.name)
+							summary = opinfo.get('summary', '')
+							if summary:
+								summ_dat.appendRow([f"{fam_name} {op_label}", summary])
+						except:
+							pass
+
+			# Disk-based ops: read from folder_cache (populated by FileManager.refresh_cache)
+			folder_cache = installer.Properties.get('folder_cache', {})
+			for key, entry in (folder_cache or {}).items():
+				opinfo = (entry.get('manifest') or {}).get('OpInfo', {})
+				summary = opinfo.get('summary', '')
+				if summary:
+					op_label = opinfo.get('op_label', key)
+					summ_dat.appendRow([f"{fam_name} {op_label}", summary])
 
 	def getPopMenuItems(self, fam_name, op_type):
 		"""Get pop_menu items from manifest OpInfo for an operator."""

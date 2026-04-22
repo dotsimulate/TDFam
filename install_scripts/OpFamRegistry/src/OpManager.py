@@ -274,6 +274,8 @@ class OpManager:
 		# 7. Unwrap TD Dependency / DependList so json.dumps doesn't loop
 		ordered = self._unwrap_for_json(ordered)
 
+		debug(f"[_validate_OpInfo] op={_op.path} op_color={'op_color' in ordered} ordered_keys={list(ordered.keys())} op_color_val={ordered.get('op_color')}")
+
 		if _OpInfo:
 			_OpInfo.text = json.dumps(ordered, indent=4)
 		return ordered
@@ -437,6 +439,10 @@ class OpManager:
 			print(f"deployManifestsToDisk: no .tox files under {operators_folder}")
 			return 0
 
+		debug(f"[deployManifestsToDisk] family={family_name} folder={operators_folder} tox_count={len(tox_entries)}")
+		for _n, _p, _v, _d in tox_entries:
+			debug(f"  tox entry: name={_n} version={_v} path={_p}")
+
 		count = 0
 		skipped = 0
 
@@ -448,6 +454,7 @@ class OpManager:
 
 			# Priority 1: existing sidecar — load fresh, update, write back
 			sidecar_path = tox_path[:-4] + '.json'
+			debug(f"[deployManifestsToDisk] op={lookup_name} checking sidecar={sidecar_path} exists={os.path.isfile(sidecar_path)}")
 			if os.path.isfile(sidecar_path):
 				try:
 					with open(sidecar_path, 'r') as f:
@@ -456,7 +463,9 @@ class OpManager:
 					print(f"deployManifestsToDisk: error reading {sidecar_path}: {e}")
 					skipped += 1
 					continue
+				debug(f"[deployManifestsToDisk] op={lookup_name} sidecar loaded keys={list(existing_manifest.keys())} existing_OpInfo={existing_manifest.get('OpInfo')}")
 				validated = self._buildDiskManifest(family_owner, lookup_name, cache_entry, existing_manifest)
+				debug(f"[deployManifestsToDisk] op={lookup_name} validated_OpInfo={validated.get('OpInfo')}")
 				try:
 					json_str = json.dumps(self._unwrap_for_json(validated), indent=4)
 				except Exception as e:
@@ -465,6 +474,7 @@ class OpManager:
 				try:
 					with open(sidecar_path, 'w') as f:
 						f.write(json_str)
+					debug(f"[deployManifestsToDisk] WROTE sidecar {sidecar_path}")
 					count += 1
 				except Exception as e:
 					print(f"deployManifestsToDisk: error writing {sidecar_path}: {e}")
@@ -476,8 +486,10 @@ class OpManager:
 			if os.path.abspath(tox_dir) != os.path.abspath(operators_folder):
 				candidates.append(os.path.join(operators_folder, 'manifest.json'))
 
+			debug(f"[deployManifestsToDisk] op={lookup_name} no sidecar — checking folder manifests key={key} candidates={candidates}")
 			for path in candidates:
 				if not os.path.isfile(path):
+					debug(f"[deployManifestsToDisk] op={lookup_name} candidate not found: {path}")
 					continue
 				if path not in folder_writes:
 					try:
@@ -486,13 +498,18 @@ class OpManager:
 					except Exception as e:
 						print(f"deployManifestsToDisk: error reading {path}: {e}")
 						continue
+				folder_keys = list(folder_writes[path].keys())
+				debug(f"[deployManifestsToDisk] op={lookup_name} folder manifest keys={folder_keys} key_found={key in folder_writes[path]}")
 				if key in folder_writes[path]:
 					# Use the just-loaded entry (fresh) as the existing_manifest source
 					entry_manifest = folder_writes[path][key] if isinstance(folder_writes[path][key], dict) else {}
 					validated = self._buildDiskManifest(family_owner, lookup_name, cache_entry, entry_manifest)
+					debug(f"[deployManifestsToDisk] op={lookup_name} folder manifest validated_OpInfo={validated.get('OpInfo')}")
 					folder_writes[path][key] = validated
 					count += 1
 					break
+			else:
+				debug(f"[deployManifestsToDisk] op={lookup_name} SKIPPED — no sidecar and no matching folder manifest entry")
 			# If neither a sidecar nor a matching folder-manifest entry exists, skip silently.
 
 		# Flush batched folder-manifest updates
@@ -602,9 +619,13 @@ class OpManager:
 				_op.copy(license)
 
 	def _handle_attributes(self, family_owner, _op, is_file_based=False, OpInfo=None):
-		if is_file_based:
-			op_color = OpInfo.get('op_color') if OpInfo else None
+		op_color = OpInfo.get('op_color') if OpInfo else None
+		debug(f"[_handle_attributes] op={_op.path} is_file_based={is_file_based} op_color={op_color} OpInfo_keys={list(OpInfo.keys()) if OpInfo else None} color_before={_op.color}")
+		if is_file_based or op_color:
 			apply_family_color(family_owner, _op, op_color=op_color)
+			debug(f"[_handle_attributes] color_after_apply={_op.color}")
+		else:
+			debug(f"[_handle_attributes] SKIPPED apply_family_color — not file_based and no op_color")
 
 		_op.allowCooking = True
 		_op.bypass = False

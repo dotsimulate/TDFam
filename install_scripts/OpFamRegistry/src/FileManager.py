@@ -68,12 +68,14 @@ class FileManager:
 							key = name.lower()
 							sidecar = self._load_sidecar_json(item_path, f)
 							manifest_data = sidecar or cat_manifest.get(key) or root_manifest.get(key)
-							new_cache[key] = {
+							entry = {
 								'path': os.path.join(item_path, f),
 								'version': version,
 								'category': category_name,
 								'manifest': manifest_data
 							}
+							optype_key = (((manifest_data or {}).get('OpInfo') or {}).get('op_type') or '').lower()
+							new_cache[optype_key if optype_key else key] = entry
 
 			elif item.endswith('.tox'):
 				# Loose file = no category
@@ -82,12 +84,14 @@ class FileManager:
 					key = name.lower()
 					sidecar = self._load_sidecar_json(operators_folder, item)
 					manifest_data = sidecar or root_manifest.get(key)
-					new_cache[key] = {
+					entry = {
 						'path': os.path.join(operators_folder, item),
 						'version': version,
 						'category': None,
 						'manifest': manifest_data
 					}
+					optype_key = (((manifest_data or {}).get('OpInfo') or {}).get('op_type') or '').lower()
+					new_cache[optype_key if optype_key else key] = entry
 
 		print(f"{family_name}: Folder cache refreshed - {len(new_cache)} operators found")
 		installer.Properties['folder_cache'] = new_cache
