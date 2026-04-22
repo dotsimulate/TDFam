@@ -152,9 +152,12 @@ class ExtUpdater:
 			self.IsUpdatable.val = False
 			return
 
-		self.newTag = new_tag
 		debug(f'ExtUpdater: Polled latest tag: {new_tag}')
 		new_tag_clean = new_tag.strip('v')
+		self.newTag = new_tag_clean
+
+		parent.OpFamRegistry.parent().store('new_tdfamregistry_version', new_tag_clean)
+
 		current = self.current_version
 
 		try:
@@ -204,8 +207,8 @@ class ExtUpdater:
 			_: Unused parameter (allows binding to par callbacks).
 		"""
 		self._PreRemoteDownload()
-		self.MockUpdate()
-		#iop.Downloader.par.Download.pulse()
+		#self.MockUpdate()
+		iop.Downloader.par.Download.pulse()
 
 	def MockUpdate(self, source_path='/TDFamRegistry'):
 		"""
@@ -318,16 +321,15 @@ class ExtUpdater:
 
 		# Configure the new component
 		folder = self.palette_folder
-		#newComp.par.externaltox.mode = ParMode.EXPRESSION
-		#newComp.par.externaltox.expr = f"f'{{app.userPaletteFolder}}/{folder}/{fp.baseName}'"
-
+		
+		self.newTag = parent.OpFamRegistry.parent().fetch('new_tdfamregistry_version','0.0.0')
 		debug(f'Setting version to {self.newTag} on new component')
 		if hasattr(newComp.par, 'Version'):
 			newComp.par.Version = self.newTag
-		#newComp.par.savebackup = True
+			
 
 		newComp.store('post_update', True)
-		debug(f'old comp: {oldComp.path}, new comp: {newComp.path}')
+
 		global_registry = op.FAMREGISTRY if hasattr(op, 'FAMREGISTRY') else None
 		if global_registry:
 			if (_registered_fams := getattr(global_registry, 'RegisteredFams', None)):
@@ -343,28 +345,9 @@ class ExtUpdater:
 		new_path = newComp.path
 		old_version = oldComp.par.Version.eval()
 		new_version = newComp.par.Version.eval()
-		debug(f'Replacing {old_path} (v{old_version}) with {new_path} (v{new_version})')
 		# Replace the old component
 		TDF.replaceOp(oldComp, newComp)
-		debug(f'replaced {old_path} with {new_path} successfully')
-		# newComp.destroy()
 
-		# debug(f'######### THIS PROBABLY DOESN\'T RUN ANY MORE #########')
-		# # Get reference to the newly replaced component
-		# replacedComp = self.target_comp
-
-		# # Restore docked operators
-		# if replacedComp:
-		# 	for dock_info in docked_ops:
-		# 		docked_op = dock_info['op']
-		# 		if docked_op:
-		# 			# Restore position first
-		# 			docked_op.nodeX, docked_op.nodeY = dock_info['pos']
-		# 			# Then re-dock
-		# 			docked_op.dock = replacedComp
-
-		# # Notify user of successful update
-		# self._post_update_notify()
 
 	def _post_update_notify(self):
 		"""
