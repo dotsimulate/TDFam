@@ -892,10 +892,7 @@ class OpFamRegistryExt:
 	
 	def DeployManifests(self, family_name, family_owner):
 		"""
-		Deploy or update on-disk sidecar JSON manifests for all operators in a family.
-		Useful for file-based operators that need on-disk manifests for OP Create menu
-		integration, and also for embedded operators if you want to expose their
-		manifests on disk for debugging or external tools.
+		Deploy or redeploy manifests for a family. This is called automatically when
 		"""
 		#validate owner
 		if not self.ValidateFamilyOwner(family_name, family_owner):
@@ -906,8 +903,7 @@ class OpFamRegistryExt:
 			debug(f'DeployManifests: family {family_name} not found')
 			return False
 
-		self.OpManager.deployManifestsToDisk(family_owner)
-		return True
+		return self.OpManager.deployManifests(family_owner)
 
 # endregion Operator Management
 
