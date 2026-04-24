@@ -265,9 +265,12 @@ def cook(scriptOp):
                         grouped_nodes[group_name].append(node)
             # group_order already built from defLabel rows above
             custom_order = {}
+            group_mapping_order = []
             if group_table:
                 for col in range(group_table.numCols):
                     grp = group_table[0, col].val
+                    if grp:
+                        group_mapping_order.append(grp)
                     custom_order[grp] = {}
                     for row in range(1, group_table.numRows):
                         op_name = group_table[row, col].val
@@ -277,11 +280,13 @@ def cook(scriptOp):
             # Get sort method from settings table
             sort_method = settings['sort_within_group', 1].val if settings and settings.row('sort_within_group') else 'alphabetical'
 
-            # Sort groups: column order first, then alphabetical for unlisted
+            # Sort groups: group_mapping column order first, then defLabel order, then alphabetical
             def group_sort_key(name):
+                if group_mapping_order and name in group_mapping_order:
+                    return (0, group_mapping_order.index(name))
                 if name in group_order:
-                    return (0, group_order.index(name))
-                return (1, name.lower())
+                    return (1, group_order.index(name))
+                return (2, name.lower())
 
             sorted_groups = sorted(grouped_nodes.keys(), key=group_sort_key)
 
