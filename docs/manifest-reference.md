@@ -1,36 +1,14 @@
 # Manifest Reference
 
-Every placed operator gets a `FamManifest` child COMP containing DATs that define the operator's identity, menu behavior, and retention rules. File-based operators can also provide the same manifest data externally as JSON sidecars or folder manifests.
+Every placed COMP operator gets a `FamManifest` child COMP. The manifest contains DATs — `OpInfo`, `ParRetain`, `StateRetain`, and `Shortcuts` — that define the operator's identity, menu behavior, and what data survives stubs and updates.
 
-## family_info
-
-`family_info` is a JSON DAT on the TDFam owner comp. TDFam creates it with empty defaults when missing. It stores family-level metadata and menu entries. The keys live at the top level; there is no `FamilyInfo` wrapper key.
-
-```json
-{
-  "summary": "Tools for fast project setup.",
-  "doc_url": "https://example.com/family-docs",
-  "support_url": "https://patreon.com/example",
-  "PopMenu": [
-    {
-      "label": "Open Family Tools",
-      "callback": "onOpenFamilyTools",
-      "disabled": false
-    }
-  ]
-}
-```
-
-| Key | Description |
-|-----|-------------|
-| `summary` | Family-level help summary. Added to the TD Registry summaries table under the family name. |
-| `doc_url` | Family documentation URL. Used as the right-click `Documentation` fallback when the operator has no `OpInfo.doc_url`. |
-| `support_url` | Optional support URL. Adds a built-in `Support` right-click item for this family. |
-| `PopMenu` | Family-level right-click menu entries. These appear before per-operator `OpInfo.pop_menu` entries. |
+Manifests are per-operator. Family-level metadata uses a separate `family_info` DAT on the TDFam owner comp — see [Family Info](#family-info) below.
 
 ## OpInfo
 
-`OpInfo` is the operator identity and menu metadata block.
+`OpInfo` is the operator identity block. It controls how the operator appears in the TAB menu, how TDFam finds it during placement and updates, and what metadata is attached to it.
+
+`op_type` is the primary key for the entire system. It identifies what an operator _is_ — lookup, placement, stubs, updates, cache keying, and tag matching all use `op_type`. It stays stable even if the node name, file name, or label changes.
 
 ```json
 {
@@ -63,20 +41,26 @@ Every placed operator gets a `FamManifest` child COMP containing DATs that defin
 | `op_name` | Node name used when a clone is prepared for placement. |
 | `op_label` | Display label shown in the TAB menu. |
 | `op_version` | Semantic version of this operator. |
-| `fam_version` | Version of the family that shipped this operator. Rewritten from the family owner during validation. |
-| `op_fam` | Family name. Rewritten from the family owner during validation. |
-| `op_group` | Optional menu group. Takes priority over `group_mapping`; file-based ops fall back to folder category when no manifest/config group exists. |
+| `fam_version` | Version of the family that shipped this operator. Rewritten automatically during validation. |
+| `op_fam` | Family name. Rewritten automatically during validation. |
+| `op_group` | Optional menu group. Takes priority over `group_mapping`; file-based ops fall back to their folder category when no manifest or config group exists. |
 | `summary` | Optional help text merged into the OP Create dialog summaries table. |
-| `doc_url` | Optional URL opened from the right-click `Documentation` item for embedded menu entries. `https://` is added when no scheme is provided. |
-| `op_color` | Optional RGB list applied to placed, updated, or restored operators. This per-op color overrides the family color toggle for that operator. |
-| `isFilter` | Optional boolean used to choose filter vs generator menu layout. If omitted, embedded ops use generator membership and file-based ops default to filter behavior. |
-| `compatible_types` | Optional per-operator compatibility override used by the append/connect workflow. |
-| `search_words` | Optional list, or comma/space-separated string, of extra search terms. |
-| `pop_menu` | Optional right-click menu entries for embedded menu entries. See "Pop Menu Items" below for the exact callback contract. |
+| `doc_url` | Optional URL opened from the right-click `Documentation` item. `https://` is added when no scheme is provided. |
+| `op_color` | Optional `[R, G, B]` list applied to placed, updated, or restored operators. Overrides the family color for this operator. |
+| `isFilter` | Optional boolean. Selects filter vs generator menu layout. If omitted, embedded ops use generator layout and file-based ops default to filter. |
+| `compatible_types` | Optional per-operator compatibility override for the append/connect workflow. |
+| `search_words` | Optional list, or comma/space-separated string, of extra search terms for the TAB menu. |
+| `pop_menu` | Optional right-click menu entries. See [Pop Menu Items](#pop-menu-items). |
 
-`op_type` is the primary key. It identifies what an operator is even if the node name, file name, or label changes.
+### Validation behavior
 
-When manifests are validated, TDFam preserves existing custom fields. It always rewrites `fam_version` and `op_fam` from the family owner, fills missing required identity fields from the operator name/version, and sanitizes in-TD `op_name` and `op_type` values for TouchDesigner naming.
+When manifests are validated (during placement or `Ensuremanifests`), TDFam:
+
+- Preserves existing custom fields — manifest data is the source of truth.
+- Always rewrites `fam_version` and `op_fam` from the family owner.
+- Fills missing identity fields (`op_name`, `op_type`, `op_label`) from the operator's display name.
+- Fills `op_version` from the file version or `par.Version` if missing.
+- Sanitizes `op_name` and `op_type` to valid TouchDesigner node names.
 
 ## ParRetain
 
@@ -99,6 +83,15 @@ Rules governing which parameters are preserved across stub and update operations
 }
 ```
 
+### Defaults
+
+The defaults are different for the operator itself vs its children:
+
+- **Self (`.`)**: starts with all custom parameters, then exclusions narrow the set.
+- **Children** (e.g. `"filter1"`): starts with nothing, then inclusions add parameters.
+
+This means for self rules you typically only need to list what to _exclude_, while for children you list what to _include_.
+
 ### Rule Syntax
 
 | Pattern | Meaning |
@@ -111,11 +104,9 @@ Rules governing which parameters are preserved across stub and update operations
 | `<PageName>` | Retain all parameters on this page. |
 | `Par*` | Wildcard; retain all matching parameters. |
 
-For `.` / self rules, the default is all custom parameters, then exclusions are applied. For child entries, the default is nothing; inclusions opt parameters in.
-
 ## StateRetain
 
-Rules for preserving non-parameter state: extension storage, raw component storage, and DAT content.
+Rules for preserving non-parameter state: extension storage, raw component storage, and DAT content. Uses the same rule syntax as ParRetain (`name`, `name:scenario`, `!name`, `*` wildcards).
 
 ```json
 {
@@ -141,13 +132,11 @@ Rules for preserving non-parameter state: extension storage, raw component stora
 }
 ```
 
-StateRetain uses the same rule syntax as ParRetain: `name`, `name:scenario`, `!name`, and wildcards with `*`.
-
-| Section | Description |
-|---------|-------------|
-| `extensions` | Preserves StorageManager-style dictionaries stored as `{ClassName}Stored`. |
-| `storage` | Preserves raw `comp.store()` entries, excluding extension `*Stored` keys. |
-| `dats` | Preserves immediate text/table DAT children by name. |
+| Section | What it preserves |
+|---------|-------------------|
+| `extensions` | StorageManager-style dictionaries stored as `{ClassName}Stored`. |
+| `storage` | Raw `comp.store()` entries, excluding extension `*Stored` keys. |
+| `dats` | Immediate text/table DAT children by name. |
 
 External manifests can provide `StateRetain`; it is merged into an existing in-TD manifest only for missing top-level keys.
 
@@ -164,11 +153,51 @@ Keyboard shortcut mappings for the operator.
 
 Keys are shortcut combinations, values are action identifiers handled by the ShortcutManager.
 
+## Deploying Manifests
+
+Pulsing the `Ensuremanifests` parameter validates all manifests for the family: embedded operator manifests are validated in place, and existing external manifest files are updated.
+
+Disk deployment is intentionally conservative:
+
+- Existing sidecar JSON files are updated in place.
+- Existing folder `manifest.json` entries are updated in place.
+- **Missing sidecars or missing folder-manifest entries are not created automatically.** To use external manifests for a file-based operator, create the sidecar or folder `manifest.json` entry first — then `Ensuremanifests` will keep it in sync.
+- Non-`OpInfo` sections (`ParRetain`, `StateRetain`, `Shortcuts`, and any custom top-level data) are preserved.
+
+After deployment, the folder cache, search-word cache, OP menu table, and injected UI data are refreshed.
+
+## Family Info
+
+`family_info` is separate from per-operator manifests. It is a JSON DAT on the TDFam owner comp that stores family-level metadata — information that applies to the family as a whole, not to any single operator. TDFam creates it with empty defaults when missing.
+
+```json
+{
+  "summary": "Tools for fast project setup.",
+  "doc_url": "https://example.com/family-docs",
+  "support_url": "https://patreon.com/example",
+  "PopMenu": [
+    {
+      "label": "Open Family Tools",
+      "callback": "onOpenFamilyTools",
+      "disabled": false
+    }
+  ]
+}
+```
+
+| Key | Description |
+|-----|-------------|
+| `summary` | Family-level help summary, shown in the OP Create dialog under the family name. |
+| `doc_url` | Family documentation URL. Used as the right-click `Documentation` fallback when an operator has no `OpInfo.doc_url`. |
+| `support_url` | Optional support URL. Adds a built-in `Support` right-click item for every operator in this family. |
+| `PopMenu` | Family-level right-click menu entries. These appear on every operator in the family, before any per-operator `pop_menu` entries. |
+
 ## Pop Menu Items
 
-`family_info.PopMenu` adds family-level entries to every operator in that family. `OpInfo.pop_menu` adds entries for one embedded manifest operator. The current per-operator right-click lookup reads embedded `Opcomp` manifests; file-based sidecar/folder `pop_menu` and `doc_url` data is preserved but is not used by the OP Create right-click menu yet.
+Right-click menu entries can be defined at two scopes:
 
-Example:
+- **Family-level**: `family_info.PopMenu` — appears on every operator in the family.
+- **Per-operator**: `OpInfo.pop_menu` — appears only on that operator (embedded operators only; file-based `pop_menu` data is preserved but not yet used in the right-click menu).
 
 ```json
 {
@@ -182,28 +211,27 @@ Example:
 }
 ```
 
-Then implement `onSupportDot(info)` in the owning family's callback DAT:
-
-```python
-def onSupportDot(info):
-    # Example:
-    # import webbrowser
-    # webbrowser.open('https://patreon.com/your-project')
-    return
-```
-
-Menu entry fields:
-
 | Field | Behavior |
 |-------|----------|
 | `label` | Menu item text. Empty labels are skipped. |
 | `disabled` | When truthy, the item is shown disabled. |
-| `callback` | Family callback DAT function name. The click routes through TDFam and calls `ownerComp.ext.OpFamExt.DoCallback(callback, info)`. |
+| `callback` | Function name in the family's callback DAT. |
 
-The built-in `Documentation` item is always present. It is enabled only when `doc_url` is defined.
-The built-in `Support` item appears when `family_info.support_url` is defined.
+### Built-in entries
 
-The callback receives an `info` dict with the standard callback fields plus:
+The `Documentation` item is always present and enabled when `doc_url` is defined (per-operator `OpInfo.doc_url` or family `family_info.doc_url` as fallback). The `Support` item appears when `family_info.support_url` is defined.
+
+### Implementing a callback
+
+Define the function in the DAT pointed to by `par.Callbackdat`:
+
+```python
+def onSupportDot(info):
+    import webbrowser
+    webbrowser.open('https://patreon.com/your-project')
+```
+
+The callback receives an `info` dict with:
 
 | Key | Description |
 |-----|-------------|
@@ -258,7 +286,7 @@ A `manifest.json` at the folder root or in a category subfolder can cover multip
 
 Keys are normalized operator names: lowercase and without the version suffix parsed from the file name. Sidecar files take priority over folder manifests.
 
-### Cache and Lookup Rules
+### Lookup Order
 
 External operator folders are cached when the family initializes or when the folder is refreshed. If external `OpInfo.op_type` exists, the cache key uses that `op_type`; otherwise it uses the parsed filename key. This lets a `.tox` filename differ from the operator's canonical type without creating duplicate menu entries.
 
@@ -270,19 +298,9 @@ Lookup order for file-based manifest data:
 4. Values already inside the loaded `.tox`
 5. Generated defaults
 
-## Deploying Manifests
-
-Pulsing `Ensuremanifests` validates embedded operator manifests and updates existing external manifest files. Disk deployment is intentionally conservative:
-
-- Existing sidecar JSON files are updated in place.
-- Existing folder `manifest.json` entries are updated in place.
-- Missing sidecars or missing folder-manifest entries are not created automatically.
-- Non-`OpInfo` sections such as `ParRetain`, `StateRetain`, `Shortcuts`, and custom top-level data are preserved.
-- After deployment, the folder cache, search-word cache, OP menu table, and injected UI data are refreshed.
-
 ## Filename Convention
 
-File-based operators are parsed using a configurable regex. The default is:
+File-based operators are parsed using a configurable regex (set via the `Namingconvention` parameter). The default is:
 
 ```text
 (.+)_v(\d+\.\d+\.\d+)\.tox$

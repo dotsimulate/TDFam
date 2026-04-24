@@ -9,26 +9,35 @@ Operators can live inside the TDFam component as COMPs, or outside it as `.tox` 
 - [Lyell Hintz / dotsimulate](https://dotsimulate.com)
 - [Dan Molnar / function.str](https://www.functionstore.xyz/link-in-bio)
 
-## Quick Start
-
-1. Add the TDFam `.tox` to your TouchDesigner project.
-2. Set the family name and color.
-3. Point `Opcomp` at embedded operator COMPs, or point `Opfolder` at a folder of `.tox` files.
-4. Toggle `Install` to put the family in the TAB menu.
-
-For deeper integration, pulse `Createcallbacks` to generate a callbacks DAT, add manifests for version and retain behavior, and use JSON import/export for config under version control.
-
 ## TDFam Component
 
-The TDFam component defines one family in a project. It is intended to be packaged within families by developers — it stores the family parameters, points at embedded COMPs or an external `.tox` folder, owns the optional callbacks DAT, and carries family-level metadata.
+The TDFam component (`TDFam_create`) defines one family. It is packaged inside each family by the developer — it stores the family name, color, operator sources, callbacks, and metadata. A family can use embedded operators (COMPs inside `Opcomp`), file-based operators (`.tox` files in `Opfolder`), or both. When both sources provide the same operator, TDFam picks the higher version.
+
+Dev mode is available on the About page for development and testing. **Turn dev mode off before releasing to users.**
+
+Behind the scenes, a shared **TDFamRegistry** component coordinates all installed families — it handles UI injection into the OP Create menu, operator management, stubs, and updates.
 
 ## Operators and Manifests
 
-A family can use embedded operators (COMPs inside `Opcomp`), file-based operators (`.tox` files in `Opfolder`), or both. When multiple sources provide the same operator, TDFam resolves which version to use based on manifest metadata and version numbers.
+Each operator can carry a manifest that defines how it appears in the menu and how its data is preserved across stubs and updates.
 
-Each operator can carry a manifest (`FamManifest`) that defines its identity, menu metadata, parameter and state retention rules, and keyboard shortcuts. File-based operators can use external JSON manifests. Family-level metadata — summary, documentation, support URL, and pop-menu entries — lives in an optional `family_info` DAT. Config tables provide bulk controls for grouping, label replacement, and OS compatibility.
+| Manifest field | What it controls |
+|---|---|
+| `op_type` | Canonical operator identity used for lookup and placement |
+| `op_label` | Display name in the OP Create menu |
+| `op_group` | Menu grouping (e.g. "Generators", "Filters") |
+| `op_color` | Operator color in the menu and network |
+| `op_version` | Version tracking for updates |
+| `isFilter` | Filter vs generator classification |
+| `compatible_types` | Which TD operator types this can connect to |
+| `summary` | One-line description shown in the menu |
+| `doc_url` | Link to operator documentation |
+| `search_words` | Additional terms for menu search |
+| `pop_menu` | Right-click menu entries and actions |
 
-See the [Manifest Reference](docs/manifest-reference.md) and [Config Reference](docs/config-reference.md) for details.
+File-based operators can use external JSON manifests (sidecar or folder-based). Family-level metadata — summary, documentation, support URL, and pop-menu entries — lives in an optional `family_info` DAT. Config tables provide bulk controls for grouping, label replacement, and OS compatibility.
+
+See the [Manifest Reference](docs/manifest-reference.md) and [Config Reference](docs/config-reference.md) for the full field list and formats.
 
 ## Placement, Stubs, and Updates
 
@@ -39,6 +48,15 @@ Placed operators can be converted to **stubs** — lightweight placeholders that
 **Updates** load a newer version of an operator while preserving retained parameters and state, so users don't lose their work when a family ships a new release.
 
 See [Concepts](docs/concepts.md) and [Callbacks & API](docs/callbacks-and-api.md) for the full lifecycle and available hooks.
+
+## Quickest Start
+
+1. Add the TDFam `.tox` to your project.
+2. Set the family name and color.
+3. Point `Opcomp` or `Opfolder` at your operators.
+4. Toggle `Install`.
+
+Your operators are now in the TAB menu. For callbacks, manifests, stubs, and config — see [Concepts](docs/concepts.md).
 
 ## Updates
 
