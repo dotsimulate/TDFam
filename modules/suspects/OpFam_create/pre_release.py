@@ -21,3 +21,4 @@ parent().currentPage = 'Family'
 parent().par.Family = 'URFAM'
 parent().par.Famuicomp.expr = 'me'
 parent().par.Famuicomp.mode = ParMode.EXPRESSION
+me.destroy()

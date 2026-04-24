@@ -179,6 +179,57 @@ class ExtUpdater:
 			# If version parsing fails, compare as strings
 			self.IsUpdatable.val = (current != new_tag_clean)
 
+		self._set_update_indicator(self.IsUpdatable.val)
+		if hasattr(parent.OpFamRegistry.parent().par, 'Devmode'):
+			if parent.OpFamRegistry.parent().par.Devmode.eval() and self.IsUpdatable.val:
+				# Auto-fetch in dev mode for testing
+				#release_notes = iop.GitHub.FetchReleaseNotes()
+				#debug(f'Latest release notes:\n{release_notes}')
+				self.PromptUpdate()
+
+
+	def _get_ui_manager(self):
+		global_registry = getattr(op, 'FAMREGISTRY', None)
+		if global_registry:
+			return global_registry.op('OpFamUI') or op('/ui/dialogs/mainmenu/OpFamUI')
+		return op('/ui/dialogs/mainmenu/OpFamUI')
+
+	def _set_update_indicator(self, has_update):
+		alpha = 0.5 if has_update else 0
+		ui_manager = self._get_ui_manager()
+		if ui_manager:
+			toggle_text = ui_manager.op('fam_toggle/text')
+			if toggle_text and hasattr(toggle_text.par, 'borderbalpha'):
+				toggle_text.par.borderbalpha = alpha
+
+	def _set_family_update_indicators(self):
+		target = self.target_comp.parent()
+		if not target or not hasattr(target, 'Properties'):
+			return
+		fam_name = target.Properties.get('family_name')
+		if not fam_name:
+			return
+		ui_manager = self._get_ui_manager()
+		if not ui_manager:
+			return
+		folder_tabs = ui_manager.op('fam_menu/folderTabs/folderTabs')
+		if not folder_tabs:
+			return
+		global_registry = getattr(op, 'FAMREGISTRY', None)
+		global_updater = global_registry.op('UPDATER') if global_registry else None
+		both_updatable = self.IsUpdatable.val and bool(getattr(global_updater, 'IsUpdatable', tdu.Dependency(False)).val)
+		for tab in folder_tabs.ops('tab*'):
+			off_comp = tab.op('off')
+			if not off_comp:
+				continue
+			if off_comp.par.text.eval().lstrip('!') != fam_name:
+				continue
+			if both_updatable:
+				off_comp.par.text.expr = "'!' + op('../menuOptions')[parent().digits + 1, 'label']"
+			else:
+				off_comp.par.text.expr = "op('../menuOptions')[parent().digits + 1, 'label']"
+			break
+
 	def PromptUpdate(self):
 		"""
 		Display a confirmation dialog before updating.
@@ -188,12 +239,16 @@ class ExtUpdater:
 		"""
 		name = self.component_name
 		ret = ui.messageBox(
-			f'{name} update available',
-			f'A new version ({self.newTag}) is available.\nWould you like to update {name}?',
-			buttons=['No', 'Yes']
+			f'Hello TDFam Developer!',
+			f'This TDFam has an outdated internal registry component.\n'
+			f'We want to update it for you to ensure you and your users have the latest features and fixes.\n\n'
+			f'It will not overwrite any existing data of yours. Thanks.',
+			buttons=['Yes']
 		)
-		if ret:
+		if ret == 1:
 			self.Update()
+		else:
+			return
 
 	def Update(self, _=None):
 		"""
