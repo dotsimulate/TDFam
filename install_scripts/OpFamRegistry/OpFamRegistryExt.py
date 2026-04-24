@@ -33,7 +33,7 @@ class OpFamRegistryExt:
 		# Skip if we're a staging copy (used by MockUpdate)
 		if self.ownerComp.path == '/sys/quiet':
 			return
-		
+
 		if hasattr(op, 'FAMREGISTRY') and self.ownerComp == op.FAMREGISTRY:
 			# we just update the global registry in place, so we can restore families
 			# Restore Registered and Installed families
@@ -114,6 +114,13 @@ class OpFamRegistryExt:
 			debug('TDFamRegistry: /sys not found, cannot become global registry.')
 			return
 
+		# Clear whatever is squatting at /sys/TDFamRegistry so the copy lands
+		# at the right name — old comp may still be alive if replaceOp was
+		# called from inside its own subtree and couldn't destroy itself
+		existing_at_path = op(sys_registry_path)
+		if existing_at_path and existing_at_path != self.ownerComp:
+			existing_at_path.destroy()
+
 		# Copy ourselves to /sys
 		new_registry = sys_comp.copy(self.ownerComp, name='TDFamRegistry')
 		new_registry.allowCooking = True
@@ -137,8 +144,8 @@ class OpFamRegistryExt:
 
 		debug(f'TDFamRegistry: Copied to {new_registry.path}.')
 
-		# Destroy ourselves
-		# run(lambda: self.ownerComp.destroy(), delayFrames=1, delayRef=op.TDResources)
+		# Destroy the temp copy we came from (e.g. /sys/quiet/TDFamRegistryN)
+		run(lambda: self.ownerComp.destroy(), delayFrames=1, delayRef=op.TDResources)
 		return new_registry
 
 	def _transfer_families_to(self, target_registry):
@@ -892,10 +899,7 @@ class OpFamRegistryExt:
 	
 	def DeployManifests(self, family_name, family_owner):
 		"""
-		Deploy or update on-disk sidecar JSON manifests for all operators in a family.
-		Useful for file-based operators that need on-disk manifests for OP Create menu
-		integration, and also for embedded operators if you want to expose their
-		manifests on disk for debugging or external tools.
+		Deploy or redeploy manifests for a family. This is called automatically when
 		"""
 		#validate owner
 		if not self.ValidateFamilyOwner(family_name, family_owner):
@@ -906,8 +910,7 @@ class OpFamRegistryExt:
 			debug(f'DeployManifests: family {family_name} not found')
 			return False
 
-		self.OpManager.deployManifestsToDisk(family_owner)
-		return True
+		return self.OpManager.deployManifests(family_owner)
 
 # endregion Operator Management
 

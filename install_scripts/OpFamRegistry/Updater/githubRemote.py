@@ -142,6 +142,32 @@ class githubRemote:
 
 		raise Exception(f"Could not find release matching tag regex: {self.tagRegex}")
 
+	def FetchReleaseNotes(self):
+		"""
+		Fetch the release notes (body) for a release based on current Mode.
+
+		Returns:
+			str: Markdown release notes, or empty string if none
+		"""
+		owner, repoName = self.getRepoData()[0:2]
+		mode = self.ownerComp.par.Mode.eval()
+
+		if mode == "Latest":
+			apiEndpoint = f"https://api.github.com/repos/{owner}/{repoName}/releases/latest"
+			response = self.getAndRaise(apiEndpoint)
+			return self.checkResponse(response).get("body", "") or ""
+
+		if mode == "Search Tag":
+			search_depth = self.ownerComp.par.Searchdepth.eval()
+			apiEndpoint = f"https://api.github.com/repos/{owner}/{repoName}/releases?per_page={search_depth}"
+			response = self.getAndRaise(apiEndpoint)
+			for releaseDict in self.checkResponse(response):
+				if re.match(self.tagRegex, releaseDict["name"]):
+					return releaseDict.get("body", "") or ""
+			raise Exception(f"Could not find release matching tag regex: {self.tagRegex}")
+
+		raise Exception(f"Invalid Mode selected: {mode}")
+
 	def ExternalData(self):
 		"""
 		Main entry point for fetching release data based on mode.
@@ -190,5 +216,3 @@ class githubRemote:
 		pattern = r'/releases/tag/([^ ]+)$'
 		match = re.search(pattern, url)
 		return match.group(1) if match else None
-
-

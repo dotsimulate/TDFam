@@ -1,3 +1,4 @@
+import os
 import TDFunctions as TDF
 
 
@@ -43,6 +44,8 @@ class ExtUpdater:
 		self.IsUpdatable = tdu.Dependency(False)
 		self.newTag = None
 		self.isMajorUpdateAllowed = True
+		self._set_status_message(self.IsUpdatable.val)
+		#
 
 	@property
 	def target_comp(self):
@@ -179,6 +182,71 @@ class ExtUpdater:
 			# If version parsing fails, compare as strings
 			self.IsUpdatable.val = (current != new_tag_clean)
 
+		if parent.OpFamRegistry == (op.FAMREGISTRY if hasattr(op, 'FAMREGISTRY') else None):
+			self._set_update_indicator(self.IsUpdatable.val)
+			self._set_status_message(self.IsUpdatable.val)
+
+		if hasattr(parent.OpFamRegistry.parent().par, 'Devmode'):
+			if parent.OpFamRegistry.parent().par.Devmode.eval() and self.IsUpdatable.val:
+				# Auto-fetch in dev mode for testing
+				#release_notes = iop.GitHub.FetchReleaseNotes()
+				#debug(f'Latest release notes:\n{release_notes}')
+				self.PromptUpdate()
+
+
+	def _get_ui_manager(self):
+		global_registry = getattr(op, 'FAMREGISTRY', None)
+		if global_registry:
+			return global_registry.op('OpFamUI') or op('/ui/dialogs/mainmenu/OpFamUI')
+		return op('/ui/dialogs/mainmenu/OpFamUI')
+
+	def _set_update_indicator(self, has_update):
+		alpha = 0.5 if has_update else 0
+		ui_manager = self._get_ui_manager()
+		if ui_manager:
+			toggle_text = ui_manager.op('fam_toggle/text')
+			if toggle_text and hasattr(toggle_text.par, 'borderbalpha'):
+				toggle_text.par.borderbalpha = alpha
+
+	def _set_status_message(self, has_update):
+		status = 'Update available!' if has_update else 'https://github.com/dotsimulate/TDFam'
+		label = 'UPDATE' if has_update else 'Repo'
+		global_registry = getattr(op, 'FAMREGISTRY', None)
+		if global_registry:
+			settings = global_registry.op('OpFamUI/general_settings')
+			if settings and hasattr(settings.par, 'Status'):
+				settings.par.Status = status
+				settings.par.Status.label = label
+
+
+	def _set_family_update_indicators(self):
+		target = self.target_comp.parent()
+		if not target or not hasattr(target, 'Properties'):
+			return
+		fam_name = target.Properties.get('family_name')
+		if not fam_name:
+			return
+		ui_manager = self._get_ui_manager()
+		if not ui_manager:
+			return
+		folder_tabs = ui_manager.op('fam_menu/folderTabs/folderTabs')
+		if not folder_tabs:
+			return
+		global_registry = getattr(op, 'FAMREGISTRY', None)
+		global_updater = global_registry.op('UPDATER') if global_registry else None
+		both_updatable = self.IsUpdatable.val and bool(getattr(global_updater, 'IsUpdatable', tdu.Dependency(False)).val)
+		for tab in folder_tabs.ops('tab*'):
+			off_comp = tab.op('off')
+			if not off_comp:
+				continue
+			if off_comp.par.text.eval().lstrip('!') != fam_name:
+				continue
+			if both_updatable:
+				off_comp.par.text.expr = "'!' + op('../menuOptions')[parent().digits + 1, 'label']"
+			else:
+				off_comp.par.text.expr = "op('../menuOptions')[parent().digits + 1, 'label']"
+			break
+
 	def PromptUpdate(self):
 		"""
 		Display a confirmation dialog before updating.
@@ -188,12 +256,16 @@ class ExtUpdater:
 		"""
 		name = self.component_name
 		ret = ui.messageBox(
-			f'{name} update available',
-			f'A new version ({self.newTag}) is available.\nWould you like to update {name}?',
-			buttons=['No', 'Yes']
+			f'Hello TDFam Developer!',
+			f'This TDFam has an outdated internal registry component.\n'
+			f'We want to update it for you to ensure you and your users have the latest features and fixes.\n\n'
+			f'It will not overwrite any existing data of yours. Thanks.',
+			buttons=['Yes']
 		)
-		if ret:
+		if ret == 0:
 			self.Update()
+		else:
+			return
 
 	def Update(self, _=None):
 		"""
@@ -287,6 +359,7 @@ class ExtUpdater:
 			The new component stores 'post_update' = True, which can be
 			checked on initialization to run post-update migrations.
 		"""
+
 		name = self.component_name
 		debug(f'{name} update downloaded: {callbackInfo}')
 		comp_path = callbackInfo.get('compPath')
@@ -297,16 +370,28 @@ class ExtUpdater:
 			return
 
 		fp = tdu.FileInfo(str(callbackInfo['path']))
+		debug(f'Downloaded file info: {fp}')
+		# rename file, append version
+		if fp.exists:
+			new_name = f"{self.palette_folder}_{self.newTag}.tox"
+			new_path = fp.dir + '/' + new_name
+			if not tdu.FileInfo(new_path).exists:
+				os.rename(fp.path, new_path)
+				debug(f'Renamed downloaded file to: {new_path}')
+			else:
+				debug(f'File with name {new_name} already exists, skipping rename')
+		else:
+			debug(f'FileInfo for downloaded path does not exist: {callbackInfo["path"]}')
+
 		oldComp = self.target_comp
 
 		if not oldComp:
 			debug(f'{name} update failed: target component not found')
 			newComp.destroy()
 			return
-		
+
 		# Call post-download callbacks
 		self._PostRemoteDownload( oldComp, newComp )
-
 
 		# Store docked operators information before replacement
 		docked_ops = []
@@ -319,34 +404,47 @@ class ExtUpdater:
 			# Undock the operator before replacement
 			docked_op.dock = None
 
-		# Configure the new component
-		folder = self.palette_folder
-		
-		self.newTag = parent.OpFamRegistry.parent().fetch('new_tdfamregistry_version','0.0.0')
-		debug(f'Setting version to {self.newTag} on new component')
-		if hasattr(newComp.par, 'Version'):
-			newComp.par.Version = self.newTag
-			
+		# Grab version and families from old comp before any destruction
+		self.newTag = parent.OpFamRegistry.parent().fetch('new_tdfamregistry_version', '0.0.0')
 
-		newComp.store('post_update', True)
+		prev_reg = dict(getattr(oldComp, 'RegisteredFams', {}))
+		prev_inst = dict(getattr(oldComp, 'InstalledFams', {}))
+		prev_shortcuts = {}
+		if (_sm := getattr(oldComp, 'ShortcutManager', None)):
+			prev_shortcuts = _sm.shortcutDict.getRaw()
+		node_x, node_y = oldComp.nodeX, oldComp.nodeY
 
-		global_registry = op.FAMREGISTRY if hasattr(op, 'FAMREGISTRY') else None
-		if global_registry:
-			if (_registered_fams := getattr(global_registry, 'RegisteredFams', None)):
-				newComp.store('RegisteredFams', _registered_fams)
+		# Rename old comp out of the way so /sys/TDFamRegistry is free
+		oldComp.name = 'TDFamRegistry_old'
 
-			if (_installed_fams := getattr(global_registry, 'InstalledFams', None)):
-				newComp.store('InstalledFams', _installed_fams)
+		# Copy new comp into /sys/ with the canonical name
+		sys_root = op('/sys')
+		new_global = sys_root.copy(newComp, name='TDFamRegistry')
+		new_global.allowCooking = True
+		new_global.nodeX = node_x
+		new_global.nodeY = node_y
 
-			if (_sm := getattr(global_registry, 'ShortcutManager', None)):
-				newComp.store('ShortcutDict', _sm.shortcutDict.getRaw())
+		# Set version and shortcut immediately
+		if hasattr(new_global.par, 'Version'):
+			new_global.par.Version = self.newTag
+		new_global.par.opshortcut = 'FAMREGISTRY'
 
-		old_path = oldComp.path
-		new_path = newComp.path
-		old_version = oldComp.par.Version.eval()
-		new_version = newComp.par.Version.eval()
-		# Replace the old component
-		TDF.replaceOp(oldComp, newComp)
+		# Store families so the new tox's postInit can restore them if it has that logic
+		new_global.store('RegisteredFams', prev_reg)
+		new_global.store('InstalledFams', prev_inst)
+		new_global.store('ShortcutDict', prev_shortcuts)
+
+		# Let each family owner re-register itself with the new registry
+		for family in prev_inst.values():
+			run('args[0].ext.OpFamExt._post_init()', family, delayFrames=3, delayRef=op.TDResources)
+
+		# Notify user
+		self._post_update_notify()
+
+		# Defer destroy of old comp (we are running inside it, can't destroy synchronously)
+		run('args[0].destroy()', oldComp, delayFrames=1, delayRef=op.TDResources)
+		# Destroy the /sys/quiet temp copy now
+		newComp.destroy()
 
 
 	def _post_update_notify(self):
@@ -371,7 +469,7 @@ class ExtUpdater:
 		)
 		if ret:
 			# Open the releases page in browser
-			target = self.target_comp
+			target = self.ownerComp
 			if target and hasattr(target.par, 'Repository'):
 				repo_url = target.par.Repository.eval()
 				if repo_url:

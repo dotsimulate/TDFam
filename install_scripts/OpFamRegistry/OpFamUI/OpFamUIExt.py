@@ -18,6 +18,7 @@ class OpFamUIExt:
 		self.fam_menu = self.ownerComp.op('fam_menu')
 		self.parameters_ui = self.fam_menu.op('parameter1')
 		self.window = self.ownerComp.op('window1')
+		self.general_settings.par.Status = '-'
 		run(self.postInit(), delayFrames = 1, delayRef=op.TDResources)
 
 	def postInit(self):
@@ -72,17 +73,25 @@ class OpFamUIExt:
 			return
 
 		if panelValue.name == 'lstate':
+			if hasattr(op, 'FAMREGISTRY') and op.FAMREGISTRY:
+				if op.FAMREGISTRY.op('UPDATER').IsUpdatable.val:
+					self.onGeneralSettingsClicked(None, force=True)
+
 			self.window.par.winopen.pulse()
 		if panelValue.name == 'rstate':
 			pass
 		if panelValue.name == 'mstate':
 			pass
 
-	def onGeneralSettingsClicked(self, panelValue):
-		if panelValue.val == 0:
+	def onGeneralSettingsClicked(self, panelValue, force=False):
+		if not force and panelValue.val == 0:
 			return
-
+		
 		self.parameters_ui.par.op = self.general_settings
+
+		if hasattr(op, 'FAMREGISTRY') and op.FAMREGISTRY:
+			if op.FAMREGISTRY.op('UPDATER').IsUpdatable.val:
+				self.general_settings.currentPage = 'About'
 		
 
 # endregion UI callbacks

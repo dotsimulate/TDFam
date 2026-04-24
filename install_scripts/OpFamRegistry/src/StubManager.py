@@ -371,7 +371,13 @@ class StubManager:
 			else:
 				pars_to_retain = {p.name for p in new_comp.customPars if p.page is not None}
 			filtered_params = {k: v for k, v in params.items() if k in pars_to_retain}
-			filtered_seqs = {k: v for k, v in sequences.items() if k in pars_to_retain}
+			# sequences are keyed by sequence name, not parameter name, so we must
+			# check whether any parameter belonging to the sequence is in pars_to_retain
+			seq_par_names = {}
+			for _p in new_comp.customPars:
+				if hasattr(_p, 'sequence') and _p.sequence and _p.page is not None:
+					seq_par_names.setdefault(_p.sequence.name, set()).add(_p.name)
+			filtered_seqs = {k: v for k, v in sequences.items() if k in seq_par_names and seq_par_names[k] & pars_to_retain}
 			self._restore_params(new_comp, filtered_params, filtered_seqs)
 
 			# Child params: only what's explicitly listed per key
@@ -396,6 +402,9 @@ class StubManager:
 
 			# Hook: PreserveSpecialParams
 			self.registry.CallHook(family_name, '_PreserveSpecialParams', new_comp, params)
+
+			# Force cook so sequence-replicated inputs/outputs are created before wiring
+			new_comp.cook(force=True)
 
 			# Restore connections
 			self._restore_connections(new_comp, stub)
@@ -459,30 +468,47 @@ class StubManager:
 							self._restore_par_value(dest_block.par[par_name], par_info)
 
 	def _restore_connections(self, new_comp, stub):
-		"""Restore input/output connections from stub."""
-		# Inputs
+		"""Restore connections from stub, deferring if sequence-replicated connectors aren't ready yet."""
 		stored_inputs = stub.fetch('inputs', [])
+		stored_outputs = stub.fetch('outputs', [])
+		if len(new_comp.inputConnectors) < len(stored_inputs) or \
+		   len(new_comp.outputConnectors) < len(stored_outputs):
+			# Structural update from numBlocks hasn't propagated yet; defer one frame.
+			# Data is fetched now so the stub can be destroyed safely before the deferred call.
+			new_comp.store('_deferred_connections', {'i': stored_inputs, 'o': stored_outputs})
+			run("args[0]._apply_deferred_connections(args[1])", self, new_comp, delayFrames=10)
+			return
+		self._wire_connections(new_comp, stored_inputs, stored_outputs)
+
+	def _apply_deferred_connections(self, comp):
+		"""Apply connections that were deferred because dynamic connectors weren't ready."""
+		data = comp.fetch('_deferred_connections', None)
+		if not data:
+			return
+		comp.unstore('_deferred_connections')
+		self._wire_connections(comp, data['i'], data['o'])
+
+	def _wire_connections(self, comp, stored_inputs, stored_outputs):
+		"""Wire stored input/output connections onto a component."""
 		for i, conns in enumerate(stored_inputs):
-			if i >= len(new_comp.inputConnectors):
+			if i >= len(comp.inputConnectors):
 				break
 			for path, index in conns:
-				target = new_comp.parent().op(path)
+				target = comp.parent().op(path)
 				if target and index < len(target.outputConnectors):
 					try:
-						new_comp.inputConnectors[i].connect(target.outputConnectors[index])
+						comp.inputConnectors[i].connect(target.outputConnectors[index])
 					except:
 						pass
 
-		# Outputs
-		stored_outputs = stub.fetch('outputs', [])
 		for i, conns in enumerate(stored_outputs):
-			if i >= len(new_comp.outputConnectors):
+			if i >= len(comp.outputConnectors):
 				break
 			for path, index in conns:
-				target = new_comp.parent().op(path)
+				target = comp.parent().op(path)
 				if target and index < len(target.inputConnectors):
 					try:
-						new_comp.outputConnectors[i].connect(target.inputConnectors[index])
+						comp.outputConnectors[i].connect(target.inputConnectors[index])
 					except:
 						pass
 

@@ -1,4 +1,4 @@
-"""
+﻿"""
 OpFamCreate - Core library for operator family installation in TouchDesigner.
 
 Properties/Config management and core methods.
@@ -8,6 +8,7 @@ MIT License - Based on work by Josef Pelz
 """
 from __future__ import annotations
 import time
+import os
 from TDStoreTools import DependDict
 
 
@@ -160,8 +161,21 @@ class OpFamCreateExt:
         if internal and not force:
             force = internal.par.Force.eval()
 
-        # If registry exists and has equal or greater version (and force is not set), keep it
-        if sys_registry and not force and self._check_version(sys_registry):
+        # Global File Registry
+        global_file_registry_folder = app.userPaletteFolder + '/TDFam'
+        folder_exists = tdu.FileInfo(global_file_registry_folder).exists
+
+        # list all files in the global registry folder
+        # files end with version number TDFam_0.9.1.tox for example
+        existing_files = []
+        reg_file_path = None
+        if folder_exists:
+            all_files = os.listdir(global_file_registry_folder)
+            existing_files = [f for f in all_files if f.startswith('TDFam') and f.endswith('.tox')]
+            reg_file_path = self._check_version_filesystem(existing_files, global_file_registry_folder)
+
+        # If registry exists, is >= template version, and no newer file exists on disk — keep it
+        if sys_registry and not force and self._check_version(sys_registry) and not reg_file_path:
             return sys_registry
 
         # If we get here with a registry, it needs to be replaced (force=True or template is newer)
@@ -174,11 +188,19 @@ class OpFamCreateExt:
             sys_registry = None
 
         if not sys_registry:
-            template = self.ownerComp.op('TDFamRegistry')
-            if template:
-                sys = op('/sys')
-                if sys:
-                    sys_registry = sys.copy(template, name='TDFamRegistry')
+            sys = op('/sys')
+            if sys:
+                if reg_file_path:
+                    sys_registry = sys.create(baseCOMP, 'TDFamRegistry')
+                    sys_registry.par.externaltox = reg_file_path
+                    sys_registry.par.opshortcut = 'FAMREGISTRY'
+                    sys_registry.par.reinitnet.pulse()
+                else:
+                    template = self.ownerComp.op('TDFamRegistry')
+                    if template:
+                        sys_registry = sys.copy(template, name='TDFamRegistry')
+
+                if sys_registry:
                     sys_registry.allowCooking = True
                     sys_registry.nodeX = sys.op('TDDialogs').nodeX
                     sys_registry.nodeY = sys.op('TDDialogs').nodeY - 200
@@ -258,14 +280,71 @@ class OpFamCreateExt:
         # Keep existing if version is >= template version
         return existing_version >= template_version
 
+    def _check_version_filesystem(self, existing_files, folder):
+        """
+        Check if any .tox file on disk has a higher version than the current registry.
 
+        Expects filenames like 'TDFam_0.9.1.tox' — version is the segment after the last '_'.
+
+        Args:
+            existing_files: List of filenames (str) matching TDFam*.tox
+            folder: Directory path containing the files (used to build the return path)
+
+        Returns:
+            str or None: Full path to the highest-versioned file if it exceeds the
+                         current registry version, otherwise None
+        """
+        def _parse_version(ver_string):
+            if not ver_string:
+                return None
+            try:
+                return tuple(int(x) for x in ver_string.lstrip('vV').split('.'))
+            except (ValueError, AttributeError):
+                return None
+
+        # Prefer the live installed registry version; fall back to bundled template
+        installed_registry = getattr(op, 'FAMREGISTRY', None)
+        current_version = None
+        if installed_registry and hasattr(installed_registry.par, 'Version'):
+            current_version = _parse_version(str(installed_registry.par.Version.eval()))
+        if not current_version:
+            template = self.ownerComp.op('TDFamRegistry')
+            if template and hasattr(template.par, 'Version'):
+                current_version = _parse_version(str(template.par.Version.eval()))
+
+        if not current_version:
+            return None
+
+        best_version = None
+        best_fname = None
+        for fname in existing_files:
+            stem = fname.rsplit('.', 1)[0]    # 'TDFam_0.9.1'
+            parts = stem.rsplit('_', 1)        # ['TDFam', '0.9.1']
+            if len(parts) == 2:
+                ver = _parse_version(parts[1])
+                if ver and (best_version is None or ver > best_version):
+                    best_version = ver
+                    best_fname = fname
+
+        if best_version is None or best_version <= current_version:
+            return None
+
+        return folder + '/' + best_fname
 
 
     # endregion
 
     # region Core
 
+    def _refresh_registry_ref(self):
+        """Update stale fam_registry reference after a live registry swap."""
+        if not self.fam_registry or not self.fam_registry.valid:
+            self.fam_registry = op.FAMREGISTRY if hasattr(op, 'FAMREGISTRY') else None
+
     def _do_install(self):
+        self._refresh_registry_ref()
+        if not self.fam_registry:
+            return
         self.last_install_time = time.time()
 
         if self.operators_folder:
@@ -293,6 +372,9 @@ class OpFamCreateExt:
             run('args[0].cook(force=True)', fam_create, delayFrames=1, delayRef=op.TDResources)
 
     def _do_uninstall(self):
+        self._refresh_registry_ref()
+        if not self.fam_registry:
+            return
         if not self.fam_registry.UninstallFamily(self.ownerComp):
             # Registry rejected uninstall (not our install). Don't flip par state.
             return
