@@ -213,10 +213,10 @@ class ExtUpdater:
 		label = 'UPDATE' if has_update else 'Repo'
 		global_registry = getattr(op, 'FAMREGISTRY', None)
 		if global_registry:
-			status_par = global_registry.op('OpFamUI/general_settings').par.Status
-			if status_par:
-				status_par.val = status
-				status_par.label = label
+			settings = global_registry.op('OpFamUI/general_settings')
+			if settings and hasattr(settings.par, 'Status'):
+				settings.par.Status = status
+				settings.par.Status.label = label
 
 
 	def _set_family_update_indicators(self):
@@ -382,17 +382,16 @@ class ExtUpdater:
 				debug(f'File with name {new_name} already exists, skipping rename')
 		else:
 			debug(f'FileInfo for downloaded path does not exist: {callbackInfo["path"]}')
-		return
+
 		oldComp = self.target_comp
 
 		if not oldComp:
 			debug(f'{name} update failed: target component not found')
 			newComp.destroy()
 			return
-		
+
 		# Call post-download callbacks
 		self._PostRemoteDownload( oldComp, newComp )
-
 
 		# Store docked operators information before replacement
 		docked_ops = []
@@ -405,34 +404,47 @@ class ExtUpdater:
 			# Undock the operator before replacement
 			docked_op.dock = None
 
-		# Configure the new component
-		folder = self.palette_folder
-		
-		self.newTag = parent.OpFamRegistry.parent().fetch('new_tdfamregistry_version','0.0.0')
-		debug(f'Setting version to {self.newTag} on new component')
-		if hasattr(newComp.par, 'Version'):
-			newComp.par.Version = self.newTag
-			
+		# Grab version and families from old comp before any destruction
+		self.newTag = parent.OpFamRegistry.parent().fetch('new_tdfamregistry_version', '0.0.0')
 
-		newComp.store('post_update', True)
+		prev_reg = dict(getattr(oldComp, 'RegisteredFams', {}))
+		prev_inst = dict(getattr(oldComp, 'InstalledFams', {}))
+		prev_shortcuts = {}
+		if (_sm := getattr(oldComp, 'ShortcutManager', None)):
+			prev_shortcuts = _sm.shortcutDict.getRaw()
+		node_x, node_y = oldComp.nodeX, oldComp.nodeY
 
-		global_registry = op.FAMREGISTRY if hasattr(op, 'FAMREGISTRY') else None
-		if global_registry:
-			if (_registered_fams := getattr(global_registry, 'RegisteredFams', None)):
-				newComp.store('RegisteredFams', _registered_fams)
+		# Rename old comp out of the way so /sys/TDFamRegistry is free
+		oldComp.name = 'TDFamRegistry_old'
 
-			if (_installed_fams := getattr(global_registry, 'InstalledFams', None)):
-				newComp.store('InstalledFams', _installed_fams)
+		# Copy new comp into /sys/ with the canonical name
+		sys_root = op('/sys')
+		new_global = sys_root.copy(newComp, name='TDFamRegistry')
+		new_global.allowCooking = True
+		new_global.nodeX = node_x
+		new_global.nodeY = node_y
 
-			if (_sm := getattr(global_registry, 'ShortcutManager', None)):
-				newComp.store('ShortcutDict', _sm.shortcutDict.getRaw())
+		# Set version and shortcut immediately
+		if hasattr(new_global.par, 'Version'):
+			new_global.par.Version = self.newTag
+		new_global.par.opshortcut = 'FAMREGISTRY'
 
-		old_path = oldComp.path
-		new_path = newComp.path
-		old_version = oldComp.par.Version.eval()
-		new_version = newComp.par.Version.eval()
-		# Replace the old component
-		TDF.replaceOp(oldComp, newComp)
+		# Store families so the new tox's postInit can restore them if it has that logic
+		new_global.store('RegisteredFams', prev_reg)
+		new_global.store('InstalledFams', prev_inst)
+		new_global.store('ShortcutDict', prev_shortcuts)
+
+		# Let each family owner re-register itself with the new registry
+		for family in prev_inst.values():
+			run('args[0].ext.OpFamExt._post_init()', family, delayFrames=3, delayRef=op.TDResources)
+
+		# Notify user
+		self._post_update_notify()
+
+		# Defer destroy of old comp (we are running inside it, can't destroy synchronously)
+		run('args[0].destroy()', oldComp, delayFrames=1, delayRef=op.TDResources)
+		# Destroy the /sys/quiet temp copy now
+		newComp.destroy()
 
 
 	def _post_update_notify(self):
@@ -457,7 +469,7 @@ class ExtUpdater:
 		)
 		if ret:
 			# Open the releases page in browser
-			target = self.target_comp
+			target = self.ownerComp
 			if target and hasattr(target.par, 'Repository'):
 				repo_url = target.par.Repository.eval()
 				if repo_url:
