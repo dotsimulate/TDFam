@@ -1,3 +1,4 @@
+import os
 import TDFunctions as TDF
 
 
@@ -43,6 +44,8 @@ class ExtUpdater:
 		self.IsUpdatable = tdu.Dependency(False)
 		self.newTag = None
 		self.isMajorUpdateAllowed = True
+		self._set_status_message(self.IsUpdatable.val)
+		#
 
 	@property
 	def target_comp(self):
@@ -179,7 +182,10 @@ class ExtUpdater:
 			# If version parsing fails, compare as strings
 			self.IsUpdatable.val = (current != new_tag_clean)
 
-		self._set_update_indicator(self.IsUpdatable.val)
+		if parent.OpFamRegistry == (op.FAMREGISTRY if hasattr(op, 'FAMREGISTRY') else None):
+			self._set_update_indicator(self.IsUpdatable.val)
+			self._set_status_message(self.IsUpdatable.val)
+
 		if hasattr(parent.OpFamRegistry.parent().par, 'Devmode'):
 			if parent.OpFamRegistry.parent().par.Devmode.eval() and self.IsUpdatable.val:
 				# Auto-fetch in dev mode for testing
@@ -201,6 +207,17 @@ class ExtUpdater:
 			toggle_text = ui_manager.op('fam_toggle/text')
 			if toggle_text and hasattr(toggle_text.par, 'borderbalpha'):
 				toggle_text.par.borderbalpha = alpha
+
+	def _set_status_message(self, has_update):
+		status = 'Update available!' if has_update else 'https://github.com/dotsimulate/TDFam'
+		label = 'UPDATE' if has_update else 'Repo'
+		global_registry = getattr(op, 'FAMREGISTRY', None)
+		if global_registry:
+			status_par = global_registry.op('OpFamUI/general_settings').par.Status
+			if status_par:
+				status_par.val = status
+				status_par.label = label
+
 
 	def _set_family_update_indicators(self):
 		target = self.target_comp.parent()
@@ -245,7 +262,7 @@ class ExtUpdater:
 			f'It will not overwrite any existing data of yours. Thanks.',
 			buttons=['Yes']
 		)
-		if ret == 1:
+		if ret == 0:
 			self.Update()
 		else:
 			return
@@ -342,6 +359,7 @@ class ExtUpdater:
 			The new component stores 'post_update' = True, which can be
 			checked on initialization to run post-update migrations.
 		"""
+
 		name = self.component_name
 		debug(f'{name} update downloaded: {callbackInfo}')
 		comp_path = callbackInfo.get('compPath')
@@ -352,6 +370,19 @@ class ExtUpdater:
 			return
 
 		fp = tdu.FileInfo(str(callbackInfo['path']))
+		debug(f'Downloaded file info: {fp}')
+		# rename file, append version
+		if fp.exists:
+			new_name = f"{self.palette_folder}_{self.newTag}.tox"
+			new_path = fp.dir + '/' + new_name
+			if not tdu.FileInfo(new_path).exists:
+				os.rename(fp.path, new_path)
+				debug(f'Renamed downloaded file to: {new_path}')
+			else:
+				debug(f'File with name {new_name} already exists, skipping rename')
+		else:
+			debug(f'FileInfo for downloaded path does not exist: {callbackInfo["path"]}')
+		return
 		oldComp = self.target_comp
 
 		if not oldComp:

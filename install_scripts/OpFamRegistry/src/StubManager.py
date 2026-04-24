@@ -476,7 +476,7 @@ class StubManager:
 			# Structural update from numBlocks hasn't propagated yet; defer one frame.
 			# Data is fetched now so the stub can be destroyed safely before the deferred call.
 			new_comp.store('_deferred_connections', {'i': stored_inputs, 'o': stored_outputs})
-			run("args[0]._apply_deferred_connections(args[1])", self, new_comp, delayFrames=5)
+			run("args[0]._apply_deferred_connections(args[1])", self, new_comp, delayFrames=10)
 			return
 		self._wire_connections(new_comp, stored_inputs, stored_outputs)
 

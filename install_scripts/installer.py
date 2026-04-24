@@ -1,4 +1,4 @@
-"""
+﻿"""
 OpFamCreate - Core library for operator family installation in TouchDesigner.
 
 Properties/Config management and core methods.
@@ -160,6 +160,20 @@ class OpFamCreateExt:
         if internal and not force:
             force = internal.par.Force.eval()
 
+
+
+
+        # Global File Registry
+        global_file_registry_folder = app.userPlatteFolder + 'TDFam'
+        
+        # list all files in the global registry folder
+        # files end with version number TDFam_0.9.1.tox for example
+        existing_files = []
+        if tdu.FileInfo(global_file_registry_folder).exists:
+            existing_files = [f.name for f in tdu.FileInfo(global_file_registry_folder).files if f.name.startswith('TDFam') and f.name.endswith('.tox')]
+            if (reg_file_path := self._check_version_filesystem(existing_files, global_file_registry_folder)):
+                pass
+
         # If registry exists and has equal or greater version (and force is not set), keep it
         if sys_registry and not force and self._check_version(sys_registry):
             return sys_registry
@@ -189,6 +203,8 @@ class OpFamCreateExt:
                 sys_registry.RegisterFamily(family)
             for family in previous_installed_fams.values():
                 sys_registry.InstallFamily(family)
+            # set the external tox
+            # reload external tox...?
 
         return sys_registry
 
@@ -258,7 +274,56 @@ class OpFamCreateExt:
         # Keep existing if version is >= template version
         return existing_version >= template_version
 
+    def _check_version_filesystem(self, existing_files, folder):
+        """
+        Check if any .tox file on disk has a higher version than the current registry.
 
+        Expects filenames like 'TDFam_0.9.1.tox' — version is the segment after the last '_'.
+
+        Args:
+            existing_files: List of filenames (str) matching TDFam*.tox
+            folder: Directory path containing the files (used to build the return path)
+
+        Returns:
+            str or None: Full path to the highest-versioned file if it exceeds the
+                         current registry version, otherwise None
+        """
+        def _parse_version(ver_string):
+            if not ver_string:
+                return None
+            try:
+                return tuple(int(x) for x in ver_string.lstrip('vV').split('.'))
+            except (ValueError, AttributeError):
+                return None
+
+        # Prefer the live installed registry version; fall back to bundled template
+        installed_registry = getattr(op, 'FAMREGISTRY', None)
+        current_version = None
+        if installed_registry and hasattr(installed_registry.par, 'Version'):
+            current_version = _parse_version(str(installed_registry.par.Version.eval()))
+        if not current_version:
+            template = self.ownerComp.op('TDFamRegistry')
+            if template and hasattr(template.par, 'Version'):
+                current_version = _parse_version(str(template.par.Version.eval()))
+
+        if not current_version:
+            return None
+
+        best_version = None
+        best_fname = None
+        for fname in existing_files:
+            stem = fname.rsplit('.', 1)[0]    # 'TDFam_0.9.1'
+            parts = stem.rsplit('_', 1)        # ['TDFam', '0.9.1']
+            if len(parts) == 2:
+                ver = _parse_version(parts[1])
+                if ver and (best_version is None or ver > best_version):
+                    best_version = ver
+                    best_fname = fname
+
+        if best_version is None or best_version <= current_version:
+            return None
+
+        return folder + '/' + best_fname
 
 
     # endregion

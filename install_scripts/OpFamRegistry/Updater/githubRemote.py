@@ -216,5 +216,3 @@ class githubRemote:
 		pattern = r'/releases/tag/([^ ]+)$'
 		match = re.search(pattern, url)
 		return match.group(1) if match else None
-
-
