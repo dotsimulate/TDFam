@@ -253,12 +253,19 @@ class OpManager:
 				if k not in current:
 					current[k] = v
 
-		# 4. If the manifest has no op_version yet, pull from par.Version then family
-		if 'op_version' not in current:
-			if hasattr(_op, 'par') and _op.par['Version'] is not None:
-				current['op_version'] = str(_op.par.Version.eval())
-			elif hasattr(family_owner.par, 'Version'):
-				current['op_version'] = str(family_owner.par.Version.eval())
+		# 4. Sync op_version from par.Version: fill if absent, or bump if par.Version is higher.
+		if hasattr(_op, 'par') and _op.par['Version'] is not None:
+			par_ver_str = str(_op.par.Version.eval())
+			if 'op_version' not in current:
+				current['op_version'] = par_ver_str
+			else:
+				_parse = self.registry.FileManager._parse_version
+				par_v = _parse(par_ver_str)
+				cur_v = _parse(current.get('op_version'))
+				if par_v and cur_v and par_v > cur_v:
+					current['op_version'] = par_ver_str
+		elif 'op_version' not in current and hasattr(family_owner.par, 'Version'):
+			current['op_version'] = str(family_owner.par.Version.eval())
 
 		# 5. Canonical validation rules (overwrites fam_version/op_fam, fills missing)
 		ordered = self._apply_opinfo_rules(

@@ -34,6 +34,8 @@ See the [Manifest Reference](docs/manifest-reference.md) for the full field list
 
 A family can use embedded operators, file-based operators, or both. Embedded operators are COMPs inside the configured `Opcomp` / `custom_operators` container. File-based operators are `.tox` files in the configured `Opfolder`.
 
+Embedded master COMPs may carry a trailing number in their name (e.g. `feedbackGen1`) without affecting the resolved `op_type`. When multiple masters resolve to the same type, TDFam picks the one with the highest `op_version` in its `OpInfo`; if versions are equal or absent, the highest trailing number wins. This lets you keep multiple iterations of a master COMP side by side and control which one is active through `op_version` or naming.
+
 For file-based libraries, TDFam parses versions from filenames using the configured naming convention. It can also read sidecar JSON and folder manifests. If the same operator is available from more than one source, version resolution decides which one is used; ties go to the embedded operator.
 
 Menu metadata can come from manifests and from family-level data:
@@ -49,6 +51,8 @@ When a family is installed, TDFam adds the custom entries to TD's OP Create dial
 Placed operators can later be converted into stubs. A stub is a lightweight placeholder that keeps the network shape without carrying the full operator implementation. This is useful for sending projects or networks around without distributing the private `.tox` files or paid components themselves.
 
 Stubs preserve network position, size, wiring, cooking/bypass state, parameters covered by `ParRetain`, and state covered by `StateRetain`. Replacing a stub loads the full operator again from the installed family source.
+
+When a manifest is validated during placement or update, TDFam checks whether the master COMP has a `Version` parameter. If it does and its value is higher than the `op_version` already recorded in `OpInfo`, the manifest is updated to the new version. This keeps manifest versions in sync with the master COMP version without requiring a manual manifest edit.
 
 Updates follow a similar path: TDFam finds the matching source operator, loads the newer version, restores retained parameter and state data, reapplies menu/network metadata, reconnects the operator, and runs the matching callbacks.
 

@@ -1,4 +1,4 @@
-"""
+﻿"""
 File-based operator loading for opfam-create.
 
 Handles loading operators from external .tox files, with caching and
@@ -257,11 +257,31 @@ class FileManager:
 		custom_ops = installer.operators_comp
 		embedded = None
 		if custom_ops:
-			# first we hope for a fast tag lookup
+			def _pick_highest(ops):
+				"""Return the op with the highest op_version; trailing number breaks ties."""
+				def _score(c):
+					trailing = int(m.group(1)) if (m := re.search(r'(\d+)$', c.name)) else 0
+					version = (0, 0, 0)
+					manifest = c.op('FamManifest')
+					if manifest:
+						opinfo_dat = manifest.op('OpInfo')
+						if opinfo_dat:
+							try:
+								parsed = self._parse_version(json.loads(opinfo_dat.text).get('op_version'))
+								if parsed:
+									version = parsed
+							except:
+								pass
+					return (version, trailing)
+				return max(ops, key=_score) if ops else None
+
+			# Fast tag lookup — may return multiple masters with the same op_type; pick highest-numbered.
 			manifested_ops = custom_ops.findChildren(tags=["<MANIFEST>", f'<FAM:{family_name}>', f'<TYPE:{lookup_name}>'], maxDepth=1)
-			manifested = manifested_ops[0] if manifested_ops else None
+			manifested = _pick_highest(manifested_ops) if manifested_ops else None
+
 			if not manifested:
-				# need to look into manifests actually
+				# Deep manifest scan — collect all matches, then pick highest-numbered.
+				manifest_candidates = []
 				for _manifest in custom_ops.findChildren(tags=["<MANIFEST>"], maxDepth=2):
 					if _opInfo := _manifest.op('OpInfo'):
 						import json
@@ -269,11 +289,16 @@ class FileManager:
 						if _opType := _opInfo_dict.get('op_type'):
 							_opType = _opType.replace(family_name, '')
 							if _opType == lookup_name:
-								manifested = _manifest.parent()
-								break
+								manifest_candidates.append(_manifest.parent())
+				manifested = _pick_highest(manifest_candidates) if manifest_candidates else None
+
 			if not manifested:
+				# Name-based fallback — also covers masters named 'foo1' for op_type 'foo'.
 				embedded_ops = custom_ops.findChildren(name=lookup_name, maxDepth=1)
-				embedded = embedded_ops[0] if embedded_ops else None
+				if not embedded_ops:
+					embedded_ops = [c for c in custom_ops.findChildren(maxDepth=1)
+					                if tdu.base(c.name).lower() == lookup_name.lower()]
+				embedded = _pick_highest(embedded_ops) if embedded_ops else None
 			else:
 				embedded = manifested
 
