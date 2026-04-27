@@ -34,7 +34,6 @@ Each operator can carry a manifest that defines how it appears in the menu and h
 | `doc_url` | Link to operator documentation |
 | `search_words` | Additional terms for menu search |
 | `pop_menu` | Right-click menu entries and actions |
-| `Shortcuts` | Keyboard shortcuts — parameter toggle/pulse or custom callbacks |
 
 File-based operators can use external JSON manifests (sidecar or folder-based). Family-level metadata — summary, documentation, support URL, and pop-menu entries — lives in an optional `family_info` DAT. Config tables provide bulk controls for grouping, label replacement, and OS compatibility.
 
