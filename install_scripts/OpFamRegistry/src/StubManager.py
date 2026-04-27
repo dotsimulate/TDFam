@@ -117,6 +117,9 @@ class StubManager:
 		# Store state
 		comp.store('cooking', comp.allowCooking)
 		comp.store('bypass', comp.bypass)
+		for _flag in ('render', 'cloneImmune', 'activeViewer', 'display', 'showDocked', 'export', 'componentCloneImmune', 'pickable'):
+			if hasattr(comp, _flag):
+				comp.store(_flag, getattr(comp, _flag))
 
 		# Store input connections
 		inputs = []
@@ -412,6 +415,10 @@ class StubManager:
 			# Restore state
 			new_comp.allowCooking = stub.fetch('cooking', 1)
 			new_comp.bypass = stub.fetch('bypass', False)
+			for _flag in ('render', 'cloneImmune', 'activeViewer', 'display', 'showDocked', 'export', 'componentCloneImmune', 'pickable'):
+				_val = stub.fetch(_flag, None)
+				if _val is not None and hasattr(new_comp, _flag):
+					setattr(new_comp, _flag, _val)
 
 			# Apply family color for file-based ops
 			if source_type == 'file' and hasattr(installer, 'ownerComp'):

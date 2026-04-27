@@ -156,6 +156,9 @@ class UpdateManager:
 			new_comp.bypass = old_comp.bypass
 			new_comp.activeViewer = old_comp.activeViewer
 			new_comp.viewer = old_comp.viewer
+			for _flag in ('render', 'cloneImmune', 'display', 'showDocked', 'export', 'componentCloneImmune', 'pickable'):
+				if hasattr(old_comp, _flag) and hasattr(new_comp, _flag):
+					setattr(new_comp, _flag, getattr(old_comp, _flag))
 
 			# Read ParRetain for update scenario
 			par_retain_data = {}
