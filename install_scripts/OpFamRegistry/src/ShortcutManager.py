@@ -21,17 +21,15 @@ class ShortcutManager:
 	def enableShortcutDat(self):
 		self.shortcutDat.par.active = 1
 
-	def registerOpShortcut(self, _famName, _opType, _shortcut, _parName):
-		# Update shortcutDict
+	def registerOpShortcut(self, _famName, _opType, _shortcut, _action):
 		_currShortcutDict = self.shortcutDict.getRaw()
 		if _shortcut not in _currShortcutDict:
 			_currShortcutDict[_shortcut] = {}
-		
-		# Check if the (fam, type) tuple already exists
+
 		if (_famName, _opType) in _currShortcutDict[_shortcut]:
 			return
-			
-		_currShortcutDict[_shortcut][(_famName, _opType)] = _parName
+
+		_currShortcutDict[_shortcut][(_famName, _opType)] = _action
 		self.shortcutDict = DependDict(_currShortcutDict)
 		self._persist()
 
@@ -74,18 +72,35 @@ class ShortcutManager:
 		for _op in self.currentOps:
 			_famName, _opType = self._getFamOpType(_op)
 			if _famName and _opType:
-				if _parName := self.shortcutDict[shortcutName].get((_famName, _opType), None):
-					if (_par := _op.par[_parName]) is not None:
-						# toggle parameter if constant or bind
-						if _par.mode in [ParMode.CONSTANT, ParMode.BIND]:
-							if _par.isPulse:
-								_par.pulse()
-							else:
-								try:
-									_par.val = not _par.eval()
-								except:
-									debug(f'Failed to toggle parameter {_parName} for operator {_op.name}')
-									pass
+				_action = self.shortcutDict[shortcutName].get((_famName, _opType), None)
+				if _action is None:
+					continue
+				if isinstance(_action, dict):
+					self._execCallback(_op, _action, shortcutName, _famName, _opType)
+				else:
+					self._execParToggle(_op, _action)
+
+	def _execParToggle(self, _op, _parName):
+		if (_par := _op.par[_parName]) is not None:
+			if _par.mode in [ParMode.CONSTANT, ParMode.BIND]:
+				if _par.isPulse:
+					_par.pulse()
+				else:
+					try:
+						_par.val = not _par.eval()
+					except:
+						debug(f'Failed to toggle parameter {_parName} for operator {_op.name}')
+
+	def _execCallback(self, _op, _action, shortcutName, _famName, _opType):
+		_callbackName = _action.get('callback')
+		if not _callbackName:
+			return
+		_info = {
+			'shortcut': shortcutName, 'op': _op,
+			'fam': _famName, 'opType': _opType,
+			'about': 'Called when a shortcut with callback is triggered',
+		}
+		self.registry.CallHook(_famName, '_ShortcutAction', _callbackName, _info)
 
 	def _getFamOpType(self, _op):
 		# TODO this kind of a method should be in OpManager

@@ -1,5 +1,5 @@
 {
 	"ctrl.shift.r": "Render",
-	"ctrl.shift.b": "Bypass"
-
+	"ctrl.shift.b": "Bypass",
+	"ctrl.shift.g": { "callback": "onGroupAction" }
 }

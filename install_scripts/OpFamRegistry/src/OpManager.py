@@ -584,9 +584,9 @@ class OpManager:
 		
 		debug(f'about to register {Shortcuts} for {_op}')
 
-		for _shortcut, _parName in Shortcuts.items():
+		for _shortcut, _action in Shortcuts.items():
 			debug(f'attempting to register shortcut {_shortcut} for {_op}')
-			self.registry.ShortcutManager.registerOpShortcut(fam_name, op_type, _shortcut, _parName)
+			self.registry.ShortcutManager.registerOpShortcut(fam_name, op_type, _shortcut, _action)
 
 		return
 

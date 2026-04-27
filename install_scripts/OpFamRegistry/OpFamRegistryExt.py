@@ -1011,6 +1011,15 @@ class OpFamRegistryExt:
 		info.setdefault('about', 'Called when a manifest pop_menu item is clicked')
 		return self._dispatch_hook(fam_name, callback_name, info)
 
+	def _ShortcutAction(self, fam_name, callback_name, info):
+		"""Dispatch a shortcut callback to the owning family's callback DAT."""
+		if not callback_name:
+			return None
+		if info is None:
+			info = {}
+		info.setdefault('about', 'Called when a shortcut with callback is triggered')
+		return self._dispatch_hook(fam_name, callback_name, info)
+
 	def rebuildSummaries(self):
 		"""Rebuild the summaries table from all installed families' manifest OpInfo."""
 		import json
