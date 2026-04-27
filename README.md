@@ -34,6 +34,7 @@ Each operator can carry a manifest that defines how it appears in the menu and h
 | `doc_url` | Link to operator documentation |
 | `search_words` | Additional terms for menu search |
 | `pop_menu` | Right-click menu entries and actions |
+| `Shortcuts` | Keyboard shortcuts — parameter toggle/pulse or custom callbacks |
 
 File-based operators can use external JSON manifests (sidecar or folder-based). Family-level metadata — summary, documentation, support URL, and pop-menu entries — lives in an optional `family_info` DAT. Config tables provide bulk controls for grouping, label replacement, and OS compatibility.
 
@@ -41,7 +42,7 @@ See the [Manifest Reference](docs/manifest-reference.md) and [Config Reference](
 
 ## Placement, Stubs, and Updates
 
-When a family is installed, its operators appear in TD's OP Create dialog. TDFam handles placement, manifest validation, color, shortcuts, and callbacks.
+When a family is installed, its operators appear in TD's OP Create dialog. TDFam handles placement, manifest validation, color, shortcuts, and callbacks. Shortcuts can toggle or pulse a parameter, or dispatch a named callback through the family's callback DAT.
 
 Placed operators can be converted to **stubs** — lightweight placeholders that preserve the network shape, wiring, and retained data without carrying the full implementation. This lets project files be shared between users without distributing private or paid `.tox` components. Replacing a stub loads the full operator back from the installed family.
 
