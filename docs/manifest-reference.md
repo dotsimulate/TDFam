@@ -146,12 +146,13 @@ Keyboard shortcut mappings for the operator.
 
 ```json
 {
-  "ctrl.r": "refresh",
-  "alt.s": "save"
+	"ctrl.shift.r": "Render",
+	"ctrl.shift.b": "Bypass",
+	"ctrl.shift.g": { "callback": "onGroupAction" }
 }
 ```
 
-Keys are shortcut combinations, values are action identifiers handled by the ShortcutManager.
+Keys are shortcut combinations, values can be Custom Parameter names of the custom operator's top level, or a custom callback handled by the family owner's Callback DAT through the ShortcutManager.
 
 ## Deploying Manifests
 
