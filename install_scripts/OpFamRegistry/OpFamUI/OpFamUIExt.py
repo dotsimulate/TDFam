@@ -19,15 +19,18 @@ class OpFamUIExt:
 		self.parameters_ui = self.fam_menu.op('parameter1')
 		self.window = self.ownerComp.op('window1')
 		self.general_settings.par.Status = '-'
-		run(self.postInit(), delayFrames = 1, delayRef=op.TDResources)
+		run(self.postInit(), delayFrames = 5, delayRef=op.TDResources)
 
 	def postInit(self):
+		if not self.fam_registry:
+			return
 		self.onFamilyTabSelected(next(iter(self.fam_registry.RegisteredFams), None))
 		return
 
 	@property
 	def fam_registry(self):
-		return getattr(op, 'FAMREGISTRY', None) if not (getattr(parent, 'OpFamRegistry', None) and parent.OpFamRegistry.op('internal_pars').par.Dev.eval()) else parent.OpFamRegistry
+		reg = getattr(parent, 'OpFamRegistry', None)
+		return getattr(op, 'FAMREGISTRY', None) if not (reg and reg.op('internal_pars').par.Dev.eval()) else reg
 	
 	@property
 	def general_settings(self):

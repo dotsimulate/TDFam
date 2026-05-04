@@ -12,6 +12,7 @@ from RegistryHelpers import get_op_type_from_manifest, resolve_op_type
 class OpFamRegistryExt:
 	def __init__(self, ownerComp):
 		self.ownerComp = ownerComp
+		self._clear_fam_flags()
 		self.RegisteredFams = DependDict({})
 		self.InstalledFams = DependDict({})
 		self.EventEmitter = self.ownerComp.op('eventEmitter')
@@ -26,8 +27,17 @@ class OpFamRegistryExt:
 		self.ShortcutManager = ShortcutManager(self.ownerComp, self)
 
 		self._dev_overwrite_mode = False
-		
+		#
 		run(lambda: self.postInit(), delayFrames=1, delayRef=op.TDResources)
+
+	def _clear_fam_flags(self):
+		# makes sure TDFam has internal dev flags off
+		if self.ownerComp.parent() == op('/sys'):
+			return
+		registry_internal_pars = self.ownerComp.op('internal_pars')
+		if (tdfam_internalpars := self.ownerComp.parent().op('internal_pars')) and not registry_internal_pars.par.Dev:
+			for _par in tdfam_internalpars.customPars:
+				_par.val = 0
 
 	def postInit(self):
 		# Skip if we're a staging copy (used by MockUpdate)

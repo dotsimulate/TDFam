@@ -7,7 +7,7 @@ Info Header End'''
 
 internal = op('internal_pars')
 for _par in internal.customPars:
-    _par.reset()
+    _par.val = False
 
 parent().par.Targettype = ''
 parent().par.Targetop = ''
@@ -16,9 +16,10 @@ parent().par.Opfolder = ''
 parent().par.Opcomp = ''
 parent().par.Compatibletypes = ''
 parent().par.Callbackdat = op('default_callbacks')
-parent().customPages[4].destroy()
 parent().currentPage = 'Family'
 parent().par.Family = 'URFAM'
 parent().par.Famuicomp.expr = 'me'
 parent().par.Famuicomp.mode = ParMode.EXPRESSION
+
+parent().customPages[4].destroy()
 me.destroy()
