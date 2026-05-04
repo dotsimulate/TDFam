@@ -13,6 +13,8 @@ Operators can live inside the TDFam component as COMPs, or outside it as `.tox` 
 
 The TDFam component (`TDFam_create`) defines one family. It is packaged inside each family by the developer — it stores the family name, color, operator sources, callbacks, and metadata. A family can use embedded operators (COMPs inside `Opcomp`), file-based operators (`.tox` files in `Opfolder`), or both. When both sources provide the same operator, TDFam picks the higher version.
 
+Multiple families are ordered in the OP Create menu by their `Index` parameter, then alphabetically within the same index. Set `Index` to `-1` to pin a family to the end of the list.
+
 Dev mode is available on the About page for development and testing. **Turn dev mode off before releasing to users.**
 
 Behind the scenes, a shared **TDFamRegistry** component coordinates all installed families — it handles UI injection into the OP Create menu, operator management, stubs, and updates.
@@ -52,11 +54,13 @@ See [Concepts](docs/concepts.md) and [Callbacks & API](docs/callbacks-and-api.md
 ## Quickest Start
 
 1. Add the TDFam `.tox` to your project.
-2. Set the family name and color.
+2. Set the family name, color, and version.
 3. Point `Opcomp` or `Opfolder` at your operators.
 4. Toggle `Install`.
 
 Your operators are now in the TAB menu. For callbacks, manifests, stubs, and config — see [Concepts](docs/concepts.md).
+
+> **Developer note:** Keep the `Version` parameter (Family tab) updated with each release. TDFam inherits it into operator manifests as `fam_version` and as a fallback `op_version` for operators that don't define their own. When packaging your family component for distribution, consider promoting `Version` to the top level so users can see it without diving into the component.
 
 ## Updates
 

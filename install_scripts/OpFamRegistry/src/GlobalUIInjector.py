@@ -171,7 +171,8 @@ class GlobalUIInjector:
 			_expr += " + ["
 			for fam_name, fam_owner in self.owner.InstalledFams.items():
 				idx = fam_owner.Properties['index']
-				_expr += f"({idx}, '{fam_name}', False), "
+				sort_idx = 999999 if idx == -1 else idx
+				_expr += f"({sort_idx}, '{fam_name}', False), "
 			_expr += "]"
 		_expr += ", key=lambda x: (x[0], x[2], x[1]))]"
 

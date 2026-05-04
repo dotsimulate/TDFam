@@ -1,0 +1,9 @@
+{
+	"summary": "A short description of what this family does.",
+	"doc_url": "https://example.com/docs/my-family",
+	"support_url": "https://example.com/support",
+	"PopMenu": [
+		{"label": "My Custom Action", "callback": "onMyCustomAction"},
+		{"label": "Another Action", "callback": "onAnotherAction", "disabled": false}
+	]
+}
