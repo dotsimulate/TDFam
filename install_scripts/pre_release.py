@@ -20,6 +20,8 @@ parent().currentPage = 'Family'
 parent().par.Family = 'URFAM'
 parent().par.Famuicomp.expr = 'me'
 parent().par.Famuicomp.mode = ParMode.EXPRESSION
+parent().par.Devmode = True
+parent().par.reloadcustom = False
 
 parent().customPages[4].destroy()
 me.destroy()
