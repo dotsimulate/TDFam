@@ -56,7 +56,8 @@ def cook(scriptOp):
         scriptOp.copy(scriptOp.inputs[0])
         return
 
-    if 'name' not in [familyOps[0, c].val for c in range(familyOps.numCols)]:
+    col_names_pre = [familyOps[0, c].val for c in range(familyOps.numCols)]
+    if 'name' not in col_names_pre or 'label' not in col_names_pre or 'type' not in col_names_pre:
         scriptOp.copy(scriptOp.inputs[0])
         return
 
@@ -103,8 +104,9 @@ def cook(scriptOp):
             if not familyOps or familyOps.numRows < 2 or familyOps.numCols == 0:
                 continue
 
-            # Check 'name' column exists
-            if 'name' not in [familyOps[0, c].val for c in range(familyOps.numCols)]:
+            # Check required columns exist
+            col_names = [familyOps[0, c].val for c in range(familyOps.numCols)]
+            if 'name' not in col_names or 'label' not in col_names or 'type' not in col_names:
                 continue
             
             group_table = installer.op('group_mapping')

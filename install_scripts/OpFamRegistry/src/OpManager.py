@@ -443,7 +443,7 @@ class OpManager:
 					tox_entries.append((name.lower(), os.path.join(operators_folder, item), version, operators_folder))
 
 		if not tox_entries:
-			print(f"deployManifestsToDisk: no .tox files under {operators_folder}")
+			debug(f"deployManifestsToDisk: no .tox files under {operators_folder}")
 			return 0
 
 		count = 0
@@ -582,10 +582,7 @@ class OpManager:
 		fam_name = OpInfo.get('op_fam')
 		op_type = OpInfo.get('op_type')
 		
-		debug(f'about to register {Shortcuts} for {_op}')
-
 		for _shortcut, _action in Shortcuts.items():
-			debug(f'attempting to register shortcut {_shortcut} for {_op}')
 			self.registry.ShortcutManager.registerOpShortcut(fam_name, op_type, _shortcut, _action)
 
 		return
@@ -612,12 +609,8 @@ class OpManager:
 
 	def _handle_attributes(self, family_owner, _op, is_file_based=False, OpInfo=None):
 		op_color = OpInfo.get('op_color') if OpInfo else None
-		debug(f"[_handle_attributes] op={_op.path} is_file_based={is_file_based} op_color={op_color} OpInfo_keys={list(OpInfo.keys()) if OpInfo else None} color_before={_op.color}")
 		if is_file_based or op_color:
 			apply_family_color(family_owner, _op, op_color=op_color)
-			debug(f"[_handle_attributes] color_after_apply={_op.color}")
-		else:
-			debug(f"[_handle_attributes] SKIPPED apply_family_color — not file_based and no op_color")
 
 		_op.allowCooking = True
 		_op.bypass = False

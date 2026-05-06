@@ -200,6 +200,24 @@ class OpFamCreateExt:
                     if template:
                         sys_registry = sys.copy(template, name='TDFamRegistry')
 
+                if sys_registry and not reg_file_path:
+                    try:
+                        new_version = sys_registry.par.Version.eval() if hasattr(sys_registry.par, 'Version') else None
+                        if new_version:
+                            if not folder_exists:
+                                os.makedirs(global_file_registry_folder, exist_ok=True)
+                            for f in existing_files:
+                                try:
+                                    os.remove(global_file_registry_folder + '/' + f)
+                                except OSError:
+                                    pass
+                            new_tox_path = f"{global_file_registry_folder}/TDFamRegistry_{new_version}.tox"
+                            sys_registry.save(new_tox_path)
+                            sys_registry.par.externaltox = new_tox_path
+                            sys_registry.par.enableexternaltox = True
+                    except Exception as e:
+                        print(f"TDFam: Warning — could not persist upgraded registry to palette: {e}")
+
                 if sys_registry:
                     sys_registry.allowCooking = True
                     sys_registry.nodeX = sys.op('TDDialogs').nodeX
@@ -393,6 +411,9 @@ class OpFamCreateExt:
         return self.fam_registry.GetMasterOps(self.FamilyName.val)
 
     def _refresh_folder(self):
+        self._refresh_registry_ref()
+        if not self.fam_registry:
+            return
         self.fam_registry.FileManager.refresh_cache(self.FamilyName.val, self.operators_folder)
 
         fam_create = self.ownerComp.op('fam_create')
