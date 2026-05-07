@@ -463,8 +463,6 @@ elif(source == 'input' and ({compatible_check})):
 		if not families_op:
 			return
 
-		families_op.bypass = False
-		
 		inject_op = nodeTable.op(inject_op_name)
 		if not inject_op:
 			original_input = families_op.inputs[0] if families_op.inputs else None
@@ -482,8 +480,8 @@ elif(source == 'input' and ({compatible_check})):
 		inject_op.nodeX = families_op.nodeX - 150
 		inject_op.nodeY = families_op.nodeY
 
-		families_op.cook(force=True)
 		inject_op.cook(force=True)
+		families_op.cook(force=True)
 
 	def _setup_global_panel_execute(self, force=True):
 		"""Deploy single opfam_panel_execute to menu_op."""

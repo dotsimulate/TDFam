@@ -393,6 +393,9 @@ class OpFamCreateExt:
         return self.fam_registry.GetMasterOps(self.FamilyName.val)
 
     def _refresh_folder(self):
+        self._refresh_registry_ref()
+        if not self.fam_registry:
+            return
         self.fam_registry.FileManager.refresh_cache(self.FamilyName.val, self.operators_folder)
 
         fam_create = self.ownerComp.op('fam_create')

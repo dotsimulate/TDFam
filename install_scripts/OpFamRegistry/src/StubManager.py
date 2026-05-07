@@ -70,8 +70,6 @@ class StubManager:
 		manifest = comp.op('FamManifest')
 		op_type, _ = resolve_op_type(comp, family_name, self.registry.TagManager)
 
-		print(f"createStub: Creating stub for {comp.path} with type '{op_type}'")
-
 		# Capture children params before destruction
 		children_params = self._capture_children_params(comp)
 
@@ -571,6 +569,7 @@ class StubManager:
 
 
 		ui.undo.endBlock()
+		print(f"createStubs: Created {len(stubs)} stub(s) for {family_name}")
 
 		return stubs
 
@@ -597,5 +596,6 @@ class StubManager:
 			# 	print(f"Error replacing stub {stub.path}: {e}")
 
 		ui.undo.endBlock()
+		print(f"replaceStubs: Replaced {len(regenerated)} stub(s) for {family_name}")
 
 		return regenerated

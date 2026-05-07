@@ -112,11 +112,21 @@ class OpFamRegistryExt:
 		Follows installer.py's _get_or_create_fam_registry pattern.
 		"""
 		sys_registry_path = '/sys/TDFamRegistry'
+		sys_registry = getattr(op, 'FAMREGISTRY', None)
+		if sys_registry:
+			sys_registry_path = sys_registry.path
 
 		# If we're already at /sys/TDFamRegistry, just set the shortcut
 		if self.ownerComp.path == sys_registry_path:
 			self.ownerComp.par.opshortcut = 'FAMREGISTRY'
 			return
+
+		# Migration: older versions installed the registry at /sys/OpFamRegistry.
+		# Destroy it unconditionally — it predates version tracking so we always win.
+		legacy = op('/sys/OpFamRegistry')
+		if legacy:
+			debug('TDFamRegistry: removing legacy /sys/OpFamRegistry.')
+			legacy.destroy()
 
 		# We need to copy ourselves to /sys (same as installer.py)
 		sys_comp = op('/sys')

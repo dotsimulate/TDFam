@@ -137,9 +137,4 @@ class ChainedCallbacksExt(CallbacksExt):
             except Exception as e:
                 print(f"Error in DAT callback {callbackName}: {e}")
 
-        # Print if enabled
-        if self.PrintCallbacks:
-            status = 'FOUND' if found_callback else 'NOT FOUND'
-            debug(f"[{status}] {callbackName}:", callbackInfo)
-
         return callbackInfo if found_callback else None
