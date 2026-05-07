@@ -431,6 +431,19 @@ class ExtUpdater:
 		# Set version and shortcut immediately
 		if hasattr(new_global.par, 'Version'):
 			new_global.par.Version = self.newTag
+
+		security_counter = 10
+		while hasattr(op, 'FAMREGISTRY') and security_counter:
+			_stale_famreg = getattr(op, 'FAMREGISTRY', None)
+			if _stale_famreg:
+				_stale_famreg.destroy()
+			security_counter -= 1
+
+		legacy = op('/sys/OpFamRegistry')
+		if legacy:
+			debug('TDFamRegistry: removing legacy /sys/OpFamRegistry.')
+			legacy.destroy()
+
 		new_global.par.opshortcut = 'FAMREGISTRY'
 
 		# Store families so the new tox's postInit can restore them if it has that logic
