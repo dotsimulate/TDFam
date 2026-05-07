@@ -119,12 +119,20 @@ class OpFamRegistryExt:
 			legacy.destroy()
 
 		sys_registry_path = '/sys/TDFamRegistry'
-		sys_registry = getattr(op, 'FAMREGISTRY', None)
-		if sys_registry:
-			sys_registry_path = sys_registry.path
 
 		# If we're already at /sys/TDFamRegistry, just set the shortcut
 		if self.ownerComp.path == sys_registry_path:
+			# Also destroy any remaining op.FAMREGISTRY
+			security_counter = 10
+			while hasattr(op, 'FAMREGISTRY') and security_counter:
+				_stale_famreg = getattr(op, 'FAMREGISTRY', None)
+				if _stale_famreg == self.ownerComp:
+					break
+				if _stale_famreg:
+					_stale_famreg.destroy()
+				security_counter -= 1
+
+			# now we can become the global registry
 			self.ownerComp.par.opshortcut = 'FAMREGISTRY'
 			return
 
