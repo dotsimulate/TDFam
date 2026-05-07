@@ -2,6 +2,7 @@ from __future__ import annotations
 
 class GlobalUIInjector:
 	"""Global UI injector for OpFamRegistry."""
+	FAMILY_TABLE_COLS = 9
 	def __init__(self, ownerComp, owner : OpFamRegistryExt):
 		self.ownerComp = ownerComp
 		self.owner = owner
@@ -21,17 +22,19 @@ class GlobalUIInjector:
 			self.update_compatible_table(family_name, family_owner)
 			self._update_colors_table(family_name, family_owner)
 			self._set_owner_colors(family_owner)
-			
+
 			# 2. Global (Rebuild/Refresh)
 			self._setup_global_inject_script()
 			self._setup_global_panel_execute()
 			self.update_family_evals()
+			self._update_family_table_size()
 			self._setup_last_node_type()
 			self._modify_launch_menu()
 			self._modify_create_node()
 			self._modify_search_exec()
 			self._setup_popmenu_callbacks()
 			self._setup_helptext_chain()
+			self._setup_keyboard_nav()
 
 		except Exception as e:
 			debug(f'Error installing UI for family {family_name}: {e}')
@@ -80,16 +83,18 @@ class GlobalUIInjector:
 			# 2. Global Refresh (rebuilds scripts without this family)
 			self.update_family_evals()
 			self._update_colors_table()
+			self._update_family_table_size()
 
 			# Update and cleanup global scripts
 			self._modify_launch_menu()
 			self._modify_create_node()
 			self._modify_search_exec()
-			
+
 			# Check if any custom families remain for specific cleanup
 			if not self.owner.InstalledFams:
 				if menuOp.op('set_last_node_type'):
 					menuOp.op('set_last_node_type').destroy()
+				self._cleanup_keyboard_nav()
 			else:
 				# If families remain, just update the script
 				self._setup_last_node_type()
@@ -772,6 +777,65 @@ elif(source == 'input' and ({compatible_check})):
 		reg_summ = self.ownerComp.op('summaries')
 		if reg_summ:
 			reg_summ.clear()
+
+	def _update_family_table_size(self):
+		"""Resize families/family grid to fit all families (built-in + installed), 9 columns per row."""
+		if not self.menu_op:
+			return
+		family_table = self.menu_op.op('families/family')
+		if not family_table:
+			return
+		import td
+		n = len(td.families) + len(self.owner.InstalledFams) + 1
+		cols = min(n, self.FAMILY_TABLE_COLS)
+		rows = (n + self.FAMILY_TABLE_COLS - 1) // self.FAMILY_TABLE_COLS
+		family_table.par.tablecols = cols
+		family_table.par.tablerows = rows
+
+		families_op = self.menu_op.op('families')
+		if families_op:
+			families_op.par.h = 22*rows
+		familypanel = self.menu_op.op('familypanel')
+		if familypanel:
+			familypanel.par.h = 20*rows
+
+	def _setup_keyboard_nav(self):
+		"""Wire keyboardin1 to our nav callbacks and ensure arrow keys are in shortcuts."""
+		keyboardin = op('/ui/dialogs/menu_op/keyboardin1')
+		if not keyboardin:
+			return
+
+		keyboardin.par.callbacks.mode = ParMode.EXPRESSION
+		keyboardin.par.callbacks.expr = "op.FAMREGISTRY.op('fam_table_nav_callbacks')"
+
+		nav_keys = ['down', 'up', 'left', 'right']
+		current = str(keyboardin.par.shortcuts.eval()).split()
+
+		added = False
+		for key in nav_keys:
+			if key not in current:
+				current.append(key)
+				added = True
+
+		if added:
+			keyboardin.par.shortcuts = ' '.join(current)
+
+	def _cleanup_keyboard_nav(self):
+		"""Restore keyboardin1 callbacks and remove our arrow key shortcuts."""
+		keyboardin = op('/ui/dialogs/menu_op/keyboardin1')
+		if not keyboardin:
+			return
+
+		original_script = op('/ui/dialogs/menu_op/keyboardin1_script')
+		keyboardin.par.callbacks.expr = ''
+		keyboardin.par.callbacks.val = original_script if original_script else ''
+
+		nav_keys = {'down', 'up', 'left', 'right'}
+		current = str(keyboardin.par.shortcuts.eval()).split()
+
+		remaining = [s for s in current if s not in nav_keys]
+		if len(remaining) != len(current):
+			keyboardin.par.shortcuts = ' '.join(remaining)
 
 	def update_compatible_table(self, family_name, family_owner):
 		"""Update compatible table with family entries."""
