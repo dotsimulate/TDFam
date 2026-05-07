@@ -78,11 +78,15 @@ class OpFamRegistryExt:
 			- Destroy ourselves if it's newer or equal
 		If no global registry exists, become the global registry.
 		"""
-		
+		# Migration: older versions installed the registry at /sys/OpFamRegistry.
+		# Destroy it before checking FAMREGISTRY — the old shortcut may point there.
+		legacy = op('/sys/OpFamRegistry')
+		if legacy:
+			debug('TDFamRegistry: removing legacy /sys/OpFamRegistry.')
+			legacy.destroy()
+
 		global_registry = op.FAMREGISTRY if hasattr(op, 'FAMREGISTRY') else None
 		if not global_registry:
-			# No existing global registry - become it
-			debug('TDFamRegistry: No existing global registry found. Becoming global registry.')
 			self._become_global_registry()
 			return
 
@@ -90,15 +94,8 @@ class OpFamRegistryExt:
 		should_keep_existing = self._check_version_against(global_registry)
 
 		if should_keep_existing:
-			# Existing registry is same or newer
-			debug(
-				f'TDFamRegistry: Existing registry at {global_registry.path} is same or newer.')
-			# Transfer any families we might have to the existing registry
-			# self._transfer_families_to(global_registry)
+			pass
 		else:
-			# We are newer - replace the existing registry
-			debug(
-				f'TDFamRegistry: We are newer than existing registry at {global_registry.path}. Replacing it.')
 			self._replace_global_registry(global_registry)
 
 	def _become_global_registry(self):
@@ -177,8 +174,6 @@ class OpFamRegistryExt:
 		new_registry.store('RegisteredFams', dict(self.ownerComp.fetch('RegisteredFams', {})))
 		new_registry.store('InstalledFams', dict(self.ownerComp.fetch('InstalledFams', {})))
 		new_registry.store('ShortcutDict', self.ownerComp.fetch('ShortcutDict', {}))
-
-		debug(f'TDFamRegistry: Copied to {new_registry.path}.')
 
 		# Destroy the temp copy we came from (e.g. /sys/quiet/TDFamRegistryN)
 		run(lambda: self.ownerComp.destroy(), delayFrames=1, delayRef=op.TDResources)

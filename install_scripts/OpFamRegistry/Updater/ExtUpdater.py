@@ -1,4 +1,4 @@
-import os
+﻿import os
 import TDFunctions as TDF
 
 
@@ -383,7 +383,10 @@ class ExtUpdater:
 		else:
 			debug(f'FileInfo for downloaded path does not exist: {callbackInfo["path"]}')
 
-		oldComp = self.target_comp
+		# Find the actual global registry â€” target_comp may be an embedded
+		# template inside TDFam_create, not the live /sys registry.
+		global_reg = getattr(op, 'FAMREGISTRY', None) or op('/sys/TDFamRegistry')
+		oldComp = global_reg if global_reg else self.target_comp
 
 		if not oldComp:
 			debug(f'{name} update failed: target component not found')
@@ -404,7 +407,7 @@ class ExtUpdater:
 			# Undock the operator before replacement
 			docked_op.dock = None
 
-		# Grab version and families from old comp before any destruction
+		# Grab version and families from the global registry before destruction
 		self.newTag = parent.OpFamRegistry.parent().fetch('new_tdfamregistry_version', '0.0.0')
 
 		prev_reg = dict(getattr(oldComp, 'RegisteredFams', {}))
@@ -415,6 +418,7 @@ class ExtUpdater:
 		node_x, node_y = oldComp.nodeX, oldComp.nodeY
 
 		# Rename old comp out of the way so /sys/TDFamRegistry is free
+		oldComp.par.opshortcut = ''
 		oldComp.name = 'TDFamRegistry_old'
 
 		# Copy new comp into /sys/ with the canonical name
@@ -434,15 +438,30 @@ class ExtUpdater:
 		new_global.store('InstalledFams', prev_inst)
 		new_global.store('ShortcutDict', prev_shortcuts)
 
-		# Let each family owner re-register itself with the new registry
-		for family in prev_inst.values():
-			run('args[0].ext.OpFamExt._post_init()', family, delayFrames=3, delayRef=op.TDResources)
-
 		# Notify user
 		self._post_update_notify()
 
-		# Defer destroy of old comp (we are running inside it, can't destroy synchronously)
-		run('args[0].destroy()', oldComp, delayFrames=1, delayRef=op.TDResources)
+		# Update the embedded template inside TDFam_create so the project
+		# saves with the new version and won't re-prompt on next load.
+		embedded = self.target_comp
+		if embedded and embedded.valid and embedded.path != new_global.path:
+			embedded_parent = embedded.parent()
+			embedded_name = embedded.name
+			embedded_x, embedded_y = embedded.nodeX, embedded.nodeY
+			embedded.destroy()
+			new_embedded = embedded_parent.copy(new_global, name=embedded_name)
+			new_embedded.nodeX = embedded_x
+			new_embedded.nodeY = embedded_y
+			new_embedded.par.opshortcut = ''
+
+		# Refresh family owners' registry references so they point at the
+		# new global instead of the now-dead embedded/old registry.
+		for family in prev_inst.values():
+			if family and family.valid and hasattr(family, 'ext') and hasattr(family.ext, 'OpFamExt'):
+				family.ext.OpFamExt.fam_registry = new_global
+
+		# Defer destroy of old comp (may already be gone if postInit cleaned it)
+		run('args[0].destroy() if args[0].valid else None', oldComp, delayFrames=1, delayRef=op.TDResources)
 		# Destroy the /sys/quiet temp copy now
 		newComp.destroy()
 
