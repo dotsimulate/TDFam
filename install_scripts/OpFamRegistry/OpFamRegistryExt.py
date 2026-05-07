@@ -111,6 +111,13 @@ class OpFamRegistryExt:
 
 		Follows installer.py's _get_or_create_fam_registry pattern.
 		"""
+		# Migration: older versions installed the registry at /sys/OpFamRegistry.
+		# Destroy it unconditionally — it predates version tracking so we always win.
+		legacy = op('/sys/OpFamRegistry')
+		if legacy:
+			debug('TDFamRegistry: removing legacy /sys/OpFamRegistry.')
+			legacy.destroy()
+
 		sys_registry_path = '/sys/TDFamRegistry'
 		sys_registry = getattr(op, 'FAMREGISTRY', None)
 		if sys_registry:
@@ -121,14 +128,7 @@ class OpFamRegistryExt:
 			self.ownerComp.par.opshortcut = 'FAMREGISTRY'
 			return
 
-		# Migration: older versions installed the registry at /sys/OpFamRegistry.
-		# Destroy it unconditionally — it predates version tracking so we always win.
-		legacy = op('/sys/OpFamRegistry')
-		if legacy:
-			debug('TDFamRegistry: removing legacy /sys/OpFamRegistry.')
-			legacy.destroy()
-
-		# We need to copy ourselves to /sys (same as installer.py)
+		# This will literally never happen, but why not check
 		sys_comp = op('/sys')
 		if not sys_comp:
 			debug('TDFamRegistry: /sys not found, cannot become global registry.')
@@ -140,6 +140,14 @@ class OpFamRegistryExt:
 		existing_at_path = op(sys_registry_path)
 		if existing_at_path and existing_at_path != self.ownerComp:
 			existing_at_path.destroy()
+
+		# Also destroy any remaining op.FAMREGISTRY
+		security_counter = 10
+		while hasattr(op, 'FAMREGISTRY') and security_counter:
+			security_counter -= 1
+			_stale_famreg = getattr(op, 'FAMREGISTRY', None)
+			if _stale_famreg:
+				_stale_famreg.destroy()
 
 		# Copy ourselves to /sys
 		new_registry = sys_comp.copy(self.ownerComp, name='TDFamRegistry')

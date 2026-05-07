@@ -154,6 +154,13 @@ class OpFamCreateExt:
         return (True, None)
 
     def _get_or_create_fam_registry(self, force=False):
+
+        legacy = op('/sys/OpFamRegistry')
+        if legacy:
+            debug('TDFamRegistry: removing legacy /sys/OpFamRegistry.')
+            legacy.destroy()
+
+
         sys_registry_path = '/sys/TDFamRegistry'
         sys_registry = op(sys_registry_path)
 
@@ -186,6 +193,14 @@ class OpFamCreateExt:
             previous_installed_fams = sys_registry.InstalledFams
             sys_registry.destroy()
             sys_registry = None
+
+        # Also destroy any remaining op.FAMREGISTRY
+        security_counter = 10
+        while hasattr(op, 'FAMREGISTRY') and security_counter:
+            security_counter -= 1
+            _stale_famreg = getattr(op, 'FAMREGISTRY', None)
+            if _stale_famreg:
+                _stale_famreg.destroy()
 
         if not sys_registry:
             sys = op('/sys')
