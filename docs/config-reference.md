@@ -104,7 +104,7 @@ Use `family_info` for family-level menu data and `OpInfo` for per-operator menu 
 |-----------|-------------|
 | `Family` | Family name. Rename is rejected if another owner already holds the name; accepted renames update registry/UI references and manifest tags. |
 | `Version` | Family version string (e.g. `1.2.0`). This is inherited by operator manifests as `fam_version`, and fills `op_version` for any operator that does not define its own version. **Keep this updated when releasing a new version of your family.** When packaging the family component for distribution, consider promoting `Version` to the top level so users can see it without opening the component. |
-| `Index` | Position of this family in the OP Create menu relative to other families. Families are sorted by index, then alphabetically within the same index. Set to `-1` to pin the family to the end of the list. |
+| `Index` | Absolute position of this family in the OP Create menu tab bar, including built-in families. A custom family with `Index=3` appears at slot 3, allowing insertion between built-ins. Multiple families at the same index are sorted alphabetically. Set to `-1` to auto-assign: the family fills the next available slot after all built-ins, in alphabetical order among other wildcard families. |
 | `Colorr`, `Colorg`, `Colorb` | Family menu/network color. Existing placed ops are updated only when they still match the old family color; custom colors are preserved. |
 | `Colorfileops` | Applies the family color to file-based operators when they do not define `OpInfo.op_color`. |
 | `Opcomp` | Embedded operator source container. |

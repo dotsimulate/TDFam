@@ -13,7 +13,7 @@ Operators can live inside the TDFam component as COMPs, or outside it as `.tox` 
 
 The TDFam component (`TDFam_create`) defines one family. It is packaged inside each family by the developer — it stores the family name, color, operator sources, callbacks, and metadata. A family can use embedded operators (COMPs inside `Opcomp`), file-based operators (`.tox` files in `Opfolder`), or both. When both sources provide the same operator, TDFam picks the higher version.
 
-Multiple families are ordered in the OP Create menu by their `Index` parameter, then alphabetically within the same index. Set `Index` to `-1` to pin a family to the end of the list.
+Multiple families are ordered in the OP Create menu by their `Index` parameter. The index is absolute — it refers to a position in the full family tab bar including built-in families, so a custom family can be inserted between built-ins. Multiple families at the same index are sorted alphabetically. Set `Index` to `-1` to auto-assign: wildcard families fill the remaining slots after all built-ins, in alphabetical order.
 
 Dev mode is available on the About page for development and testing. **Turn dev mode off before releasing to users.**
 

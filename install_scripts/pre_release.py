@@ -22,6 +22,7 @@ parent().par.Famuicomp.expr = 'me'
 parent().par.Famuicomp.mode = ParMode.EXPRESSION
 parent().par.Devmode = True
 parent().par.reloadcustom = False
+parent().par.Index = -1
 
 parent().customPages[4].destroy()
 me.destroy()
