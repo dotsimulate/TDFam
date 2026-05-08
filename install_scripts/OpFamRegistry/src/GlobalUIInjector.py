@@ -167,16 +167,62 @@ class GlobalUIInjector:
 			debug(f'refresh_after_deploy error: {e}')
 
 	def _update_family_eval(self, op_to_update):
-		"""Update eval expression to include all installed families."""
+		"""Update eval expression to include all installed families.
+
+		Index is absolute: a custom family with idx=3 sorts at position 3 in the
+		full list, allowing insertion between built-ins. idx=-1 families are
+		wildcards that fill slots starting after the last built-in, alphabetically,
+		skipping any slots already claimed by explicit-index families.
+		"""
 		if not op_to_update:
 			return
 
-		_expr = "[n for _, n, _ in sorted([(i, k, True) for i, k in enumerate(families.keys())]"
+		import td
+		n_builtins = len(td.families)
+
+		custom_entries = []
 		if self.owner.InstalledFams:
-			_expr += " + ["
+			explicit = {}   # requested_idx -> [fam_name, ...]
+			wildcards = []  # idx == -1
+
 			for fam_name, fam_owner in self.owner.InstalledFams.items():
 				idx = fam_owner.Properties['index']
-				sort_idx = 999999 if idx == -1 else idx
+				if idx == -1:
+					wildcards.append(fam_name)
+				else:
+					explicit.setdefault(idx, []).append(fam_name)
+
+			wildcards.sort()
+
+			# All families sharing the same explicit idx get that position.
+			# The (sort_idx, is_builtin, name) key groups them before the
+			# built-in at that position, ordered by name.
+			positions = {}
+			claimed_set = set()
+			for idx, names in explicit.items():
+				for name in names:
+					positions[name] = idx
+				claimed_set.add(idx)
+
+			# Wildcards fill slots starting after all built-ins,
+			# skipping any slot claimed by an explicit family.
+			available = []
+			pos = n_builtins
+			while len(available) < len(wildcards):
+				if pos not in claimed_set:
+					available.append(pos)
+				pos += 1
+
+			for i, name in enumerate(wildcards):
+				positions[name] = available[i]
+
+			for fam_name in self.owner.InstalledFams:
+				custom_entries.append((positions[fam_name], fam_name))
+
+		_expr = "[n for _, n, _ in sorted([(i, k, True) for i, k in enumerate(families.keys())]"
+		if custom_entries:
+			_expr += " + ["
+			for sort_idx, fam_name in custom_entries:
 				_expr += f"({sort_idx}, '{fam_name}', False), "
 			_expr += "]"
 		_expr += ", key=lambda x: (x[0], x[2], x[1]))]"
