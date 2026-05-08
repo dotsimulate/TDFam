@@ -160,22 +160,35 @@ class UpdateManager:
 				if hasattr(old_comp, _flag) and hasattr(new_comp, _flag):
 					setattr(new_comp, _flag, getattr(old_comp, _flag))
 
-			# Read ParRetain for update scenario
-			par_retain_data = {}
-			old_manifest = old_comp.op('FamManifest')
-			if old_manifest:
-				_par_retain_dat = old_manifest.op('ParRetain')
-				if _par_retain_dat:
-					try:
-						par_retain_data = json.loads(_par_retain_dat.text)
-					except:
-						pass
+			# Read ParRetain for update scenario.
+			# Union of old and new comp manifests: new (master) takes precedence so
+			# freshly added entries are picked up immediately; old fills in anything
+			# the master no longer defines for backward compatibility.
+			def _read_par_retain(comp):
+				m = comp.op('FamManifest')
+				if not m:
+					return {}
+				dat = m.op('ParRetain')
+				if not dat:
+					return {}
+				try:
+					return json.loads(dat.text)
+				except:
+					return {}
+
+			old_retain = _read_par_retain(old_comp)
+			new_retain = _read_par_retain(new_comp)
+			par_retain_data = {**old_retain, **new_retain}
+
+			debug(f'[ParRetain] {old_comp.name}: old={old_retain}, new={new_retain}, merged={par_retain_data}')
 
 			# Determine which top-level params to retain (None = retain all)
 			self_key = next((k for k in ['.', ''] if k in par_retain_data), None)
 			pars_to_retain = get_self_pars_to_retain(new_comp, 'update', par_retain_data[self_key]) if self_key is not None else None
 
-# 1. Synchronize sequences first
+			debug(f'[ParRetain] {old_comp.name}: self_key={self_key!r}, pars_to_retain={"ALL" if pars_to_retain is None else pars_to_retain}')
+
+			# 1. Synchronize sequences first
 			processed_seqs = set()
 			skip_seqs = {'ext', 'iop'}
 
@@ -194,35 +207,47 @@ class UpdateManager:
 
 			# 2. Copy top-level parameters (now that sequences are sized)
 			skip_pars = {'Version', 'Copyright', 'opshortcut', 'parentshortcut'}
+			copied_top = []
+			skipped_top = []
 			for p in new_comp.pars():
 				if p.name in skip_pars:
 					continue
 				if hasattr(p, 'sequence') and p.sequence and p.sequence.name in skip_seqs:
 					continue
 				if pars_to_retain is not None and p.name not in pars_to_retain:
+					skipped_top.append(p.name)
 					continue
 
 				old_pars = old_comp.pars(p.name)
 				if old_pars:
 					self._copy_par(p, old_pars[0])
+					copied_top.append(p.name)
 
-			# 3. Copy retained params for each child path in ParRetain
-			all_new_children = [c.name for c in new_comp.findChildren(depth=1)]
+			debug(f'[ParRetain] {old_comp.name}: top-level copied={copied_top}, skipped={skipped_top}')
+
+			# 3. Copy retained params for each child path in ParRetain.
+			# Keys can be direct child names ('noise1') or nested paths ('base1/noise1').
+			# comp.op() handles both, so we resolve directly instead of matching
+			# against a flat list of direct children.
 			for key, _ in par_retain_data.items():
 				if key in ('.', ''):
 					continue
-				for child_path in tdu.match(key, all_new_children):
-					target_old = old_comp.op(child_path)
-					target_new = new_comp.op(child_path)
-					if not target_old or not target_new:
+				target_old = old_comp.op(key)
+				target_new = new_comp.op(key)
+				if not target_old or not target_new:
+					debug(f'[ParRetain] {old_comp.name}/{key}: old={bool(target_old)} new={bool(target_new)} — SKIPPED')
+					continue
+				child_pars = get_params_to_retain(key, 'update', par_retain_data, comp=target_new)
+				debug(f'[ParRetain] {old_comp.name}/{key}: pars to retain={child_pars}')
+				copied_child = []
+				for p in target_new.pars():
+					if p.name not in child_pars:
 						continue
-					child_pars = get_params_to_retain(key, 'update', par_retain_data, comp=target_new)
-					for p in target_new.pars():
-						if p.name not in child_pars:
-							continue
-						old_pars = target_old.pars(p.name)
-						if old_pars:
-							self._copy_par(p, old_pars[0])
+					old_pars = target_old.pars(p.name)
+					if old_pars:
+						self._copy_par(p, old_pars[0])
+						copied_child.append(p.name)
+				debug(f'[ParRetain] {old_comp.name}/{key}: copied={copied_child}')
 
 			# Ensure manifest exists on new comp (handles edge case where old op
 			# was non-COMP with no manifest but new master is a COMP)
