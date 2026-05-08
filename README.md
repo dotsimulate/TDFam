@@ -43,7 +43,7 @@ See the [Manifest Reference](docs/manifest-reference.md) and [Config Reference](
 
 ## Placement, Stubs, and Updates
 
-When a family is installed, its operators appear in TD's OP Create dialog. TDFam handles placement, manifest validation, color, shortcuts, and callbacks. Shortcuts can toggle or pulse a parameter, or dispatch a named callback through the family's callback DAT.
+When a family is installed, its operators appear in TD's OP Create dialog. The family tab bar resizes automatically as more families are installed. You can navigate between family tabs with `Tab` / `Shift+Tab`, and the arrow keys (`↑ ↓ ← →`). TDFam handles placement, manifest validation, color, shortcuts, and callbacks. Shortcuts can toggle or pulse a parameter, or dispatch a named callback through the family's callback DAT.
 
 Placed operators can be converted to **stubs** — lightweight placeholders that preserve the network shape, wiring, and retained data without carrying the full implementation. This lets project files be shared between users without distributing private or paid `.tox` components. Replacing a stub loads the full operator back from the installed family.
 
