@@ -797,7 +797,7 @@ elif(source == 'input' and ({compatible_check})):
 			families_op.par.h = 22*rows
 		familypanel = self.menu_op.op('familypanel')
 		if familypanel:
-			familypanel.par.h = 20*rows
+			familypanel.par.h = 22*rows-2
 
 	def _setup_keyboard_nav(self):
 		"""Wire keyboardin1 to our nav callbacks and ensure arrow keys are in shortcuts."""
