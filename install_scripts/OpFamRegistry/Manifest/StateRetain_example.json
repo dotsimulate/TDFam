@@ -1,0 +1,27 @@
+{
+	".": {
+		"extensions": {
+			"MyExtClass": [
+				"color",
+				"fontSize",
+				"!cache:stub"
+			]
+		},
+		"storage": [
+			"savedState",
+			"calibration:update",
+			"!sessionToken"
+		],
+		"dats": [
+			"config",
+			"presets",
+			"!debug_log"
+		]
+	},
+	"base1": {
+		"storage": ["state*"]
+	},
+	"base1/noise2": {
+		"dats": ["lut"]
+	}
+}

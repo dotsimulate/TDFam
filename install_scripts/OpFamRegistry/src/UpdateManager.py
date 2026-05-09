@@ -107,18 +107,26 @@ class UpdateManager:
 			extra_info_result = self.registry.CallHook(family_name, '_CaptureExtraInfo', old_comp, 'update')
 			extra_info = extra_info_result.get('returnValue', {}) if isinstance(extra_info_result, dict) else {}
 
-			# Capture StateRetain data before old_comp is destroyed
+			# Capture StateRetain data before old_comp is destroyed.
+			# Union of old and new manifests: new (master) takes precedence.
 			state_retain_captured = {}
-			old_manifest = old_comp.op('FamManifest')
-			if old_manifest:
-				_state_retain_dat = old_manifest.op('StateRetain')
-				if _state_retain_dat:
-					try:
-						state_retain_data = json.loads(_state_retain_dat.text)
-						if state_retain_data:
-							state_retain_captured = capture_state_retain(old_comp, state_retain_data, 'update')
-					except:
-						pass
+			def _read_state_retain(comp):
+				m = comp.op('FamManifest') if comp else None
+				if not m:
+					return {}
+				dat = m.op('StateRetain')
+				if not dat:
+					return {}
+				try:
+					return json.loads(dat.text) or {}
+				except:
+					return {}
+
+			old_state_retain = _read_state_retain(old_comp)
+			new_state_retain = _read_state_retain(master_op)
+			state_retain_data = {**old_state_retain, **new_state_retain}
+			if state_retain_data:
+				state_retain_captured = capture_state_retain(old_comp, state_retain_data, 'update')
 
 			# Hook: PreUpdate - can return False to skip, or modify master
 			pre_update = self.registry.CallHook(family_name, '_PreUpdate', old_comp, master_op)
@@ -180,13 +188,9 @@ class UpdateManager:
 			new_retain = _read_par_retain(new_comp)
 			par_retain_data = {**old_retain, **new_retain}
 
-			debug(f'[ParRetain] {old_comp.name}: old={old_retain}, new={new_retain}, merged={par_retain_data}')
-
 			# Determine which top-level params to retain (None = retain all)
 			self_key = next((k for k in ['.', ''] if k in par_retain_data), None)
 			pars_to_retain = get_self_pars_to_retain(new_comp, 'update', par_retain_data[self_key]) if self_key is not None else None
-
-			debug(f'[ParRetain] {old_comp.name}: self_key={self_key!r}, pars_to_retain={"ALL" if pars_to_retain is None else pars_to_retain}')
 
 			# 1. Synchronize sequences first
 			processed_seqs = set()
@@ -223,31 +227,29 @@ class UpdateManager:
 					self._copy_par(p, old_pars[0])
 					copied_top.append(p.name)
 
-			debug(f'[ParRetain] {old_comp.name}: top-level copied={copied_top}, skipped={skipped_top}')
-
 			# 3. Copy retained params for each child path in ParRetain.
-			# Keys can be direct child names ('noise1') or nested paths ('base1/noise1').
-			# comp.op() handles both, so we resolve directly instead of matching
-			# against a flat list of direct children.
+			# Keys can be literal names ('noise1'), nested paths ('base1/noise1'),
+			# or wildcard patterns ('noise*', 'base*/lfo*'). comp.ops() handles all.
+			prefix_old = old_comp.path + '/'
+			prefix_new = new_comp.path + '/'
 			for key, _ in par_retain_data.items():
 				if key in ('.', ''):
 					continue
-				target_old = old_comp.op(key)
-				target_new = new_comp.op(key)
-				if not target_old or not target_new:
-					debug(f'[ParRetain] {old_comp.name}/{key}: old={bool(target_old)} new={bool(target_new)} — SKIPPED')
-					continue
-				child_pars = get_params_to_retain(key, 'update', par_retain_data, comp=target_new)
-				debug(f'[ParRetain] {old_comp.name}/{key}: pars to retain={child_pars}')
-				copied_child = []
-				for p in target_new.pars():
-					if p.name not in child_pars:
+				new_targets = {op.path[len(prefix_new):]: op for op in new_comp.ops(key)}
+				old_targets = {op.path[len(prefix_old):]: op for op in old_comp.ops(key)}
+				for rel_path, target_new in new_targets.items():
+					target_old = old_targets.get(rel_path)
+					if not target_old:
 						continue
-					old_pars = target_old.pars(p.name)
-					if old_pars:
-						self._copy_par(p, old_pars[0])
-						copied_child.append(p.name)
-				debug(f'[ParRetain] {old_comp.name}/{key}: copied={copied_child}')
+					child_pars = get_params_to_retain(key, 'update', par_retain_data, comp=target_new)
+					copied_child = []
+					for p in target_new.pars():
+						if p.name not in child_pars:
+							continue
+						old_pars = target_old.pars(p.name)
+						if old_pars:
+							self._copy_par(p, old_pars[0])
+							copied_child.append(p.name)
 
 			# Ensure manifest exists on new comp (handles edge case where old op
 			# was non-COMP with no manifest but new master is a COMP)
