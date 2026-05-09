@@ -1042,7 +1042,7 @@ elif(source == 'input' and ({compatible_check})):
 		"""
 		try:
 			family_owner = self.owner.RegisteredFams.get(family_name)
-			debug(f'Updating UI color for family {family_name} to {new_color} (old={old_color})')
+			#debug(f'Updating UI color for family {family_name} to {new_color} (old={old_color})')
 			# 1. Update colors table (global rebuild is easiest to keep in sync)
 			self._update_colors_table()
 
