@@ -283,12 +283,23 @@ def capture_state_retain(comp, state_retain_data, scenario):
 			dat_rules = rules.get('dats', [])
 			if dat_rules:
 				prefix = target.path + '/'
-				child_names = [d.path[len(prefix):] for d in target.findChildren(type=DAT)]
-				filtered_names = _filter_keys_by_rules(child_names, dat_rules, scenario)
+				included = {}
+				excluded = set()
+				for item in dat_rules:
+					is_exclude = item.startswith('!')
+					pattern = item[1:] if is_exclude else item
+					if ':' in pattern:
+						pattern, rule_scenario = pattern.split(':', 1)
+						if rule_scenario != scenario:
+							continue
+					for dat_op in target.ops(pattern):
+						if is_exclude:
+							excluded.add(dat_op.path)
+						else:
+							included[dat_op.path[len(prefix):]] = dat_op
 				dat_data = {}
-				for dat_name in filtered_names:
-					dat_op = target.op(dat_name)
-					if not dat_op:
+				for dat_name, dat_op in included.items():
+					if dat_op.path in excluded:
 						continue
 					if dat_op.isTable:
 						dat_data[dat_name] = {
