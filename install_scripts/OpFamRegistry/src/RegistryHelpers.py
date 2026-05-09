@@ -220,23 +220,15 @@ def _filter_keys_by_rules(available_keys, rules, scenario):
 def _resolve_targets(comp, comp_path):
 	"""
 	Resolve a comp-relative path to a list of (resolved_path, target_op) tuples.
-	'.' returns the comp itself. Wildcards match immediate children; literal paths
-	(including nested like 'base1/noise1') are resolved via comp.op() directly.
+	'.' returns the comp itself. Uses comp.ops() which supports wildcards and
+	nested patterns like 'base*/noise*'.
 	"""
 	if comp_path in ('.', ''):
 		return [('.', comp)]
 
-	# If the path looks like a plain name or wildcard pattern (no slashes), match
-	# against direct children. For nested paths, use comp.op() directly.
-	if '/' not in comp_path and ('*' in comp_path or '?' in comp_path or '[' in comp_path):
-		child_names = [c.name for c in comp.findChildren(depth=1)]
-		matched = tdu.match(comp_path, child_names)
-		return [(name, comp.op(name)) for name in matched if comp.op(name)]
-
-	target = comp.op(comp_path)
-	if target:
-		return [(comp_path, target)]
-	return []
+	results = comp.ops(comp_path)
+	prefix = comp.path + '/'
+	return [(op.path[len(prefix):], op) for op in results]
 
 
 def capture_state_retain(comp, state_retain_data, scenario):

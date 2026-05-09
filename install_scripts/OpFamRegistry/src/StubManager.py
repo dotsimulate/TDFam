@@ -316,15 +316,15 @@ class StubManager:
 			print(f"replaceStub: No master found for type '{op_type}'")
 			return None
 
-		# Read ParRetain before rename
-		par_retain_data = {}
+		# Read stub's ParRetain now (before rename changes manifest access)
+		stub_par_retain = {}
 		_par_retain_dat = stub_manifest.op('ParRetain') if stub_manifest else None
 		if _par_retain_dat:
 			try:
-				par_retain_data = json.loads(_par_retain_dat.text)
+				stub_par_retain = json.loads(_par_retain_dat.text)
 			except:
 				pass
-			
+
 		# Rename stub to avoid name conflict
 		if not stub.name.endswith('_stub'):
 			stub.name = stub.name + '_stub'
@@ -350,7 +350,18 @@ class StubManager:
 			if stub_manifest_copy:
 				new_manifest = new_comp.copy(stub_manifest_copy)
 		ensure_manifest_tags(new_manifest, family_name, op_type=op_type)
-		
+
+		# Merge ParRetain: new comp takes precedence over stub for freshly added entries
+		new_par_retain = {}
+		_new_pr_dat = new_comp.op('FamManifest')
+		_new_pr_dat = _new_pr_dat.op('ParRetain') if _new_pr_dat else None
+		if _new_pr_dat:
+			try:
+				new_par_retain = json.loads(_new_pr_dat.text)
+			except:
+				pass
+		par_retain_data = {**stub_par_retain, **new_par_retain}
+
 		# Restore position/size
 		new_comp.nodeX = stub.nodeX
 		new_comp.nodeY = stub.nodeY
@@ -381,15 +392,15 @@ class StubManager:
 			filtered_seqs = {k: v for k, v in sequences.items() if k in seq_par_names and seq_par_names[k] & pars_to_retain}
 			self._restore_params(new_comp, filtered_params, filtered_seqs)
 
-			# Child params: only what's explicitly listed per key
-			all_child_paths = list(children_data.keys())
+			# Child params: use comp.ops() to support wildcards and nested paths
+			prefix_new = new_comp.path + '/'
 			for key, _ in par_retain_data.items():
 				if key in ('.', ''):
 					continue
-				for child_path in tdu.match(key, all_child_paths):
-					target = new_comp.op(child_path)
-					child_stored = children_data.get(child_path, {})
-					if not target or not child_stored:
+				for target in new_comp.ops(key):
+					rel_path = target.path[len(prefix_new):]
+					child_stored = children_data.get(rel_path, {})
+					if not child_stored:
 						continue
 					child_pars_to_retain = get_params_to_retain(key, 'stub', par_retain_data, comp=target)
 					child_params = {k: v for k, v in child_stored.get('params', {}).items() if k in child_pars_to_retain}
