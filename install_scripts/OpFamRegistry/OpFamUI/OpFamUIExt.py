@@ -1,6 +1,6 @@
 '''Info Header Start
 Name : OpFamUIExt
-Author : Dan@DAN-4090
+Author : DotSimulate@DOTOFFICE
 Saveorigin : opfam-create_dev.64.toe
 Saveversion : 2023.12370
 Info Header End'''

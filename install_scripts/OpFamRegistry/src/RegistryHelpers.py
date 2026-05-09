@@ -282,7 +282,8 @@ def capture_state_retain(comp, state_retain_data, scenario):
 			# DATs
 			dat_rules = rules.get('dats', [])
 			if dat_rules:
-				child_names = [c.name for c in target.findChildren(depth=1)]
+				prefix = target.path + '/'
+				child_names = [d.path[len(prefix):] for d in target.findChildren(type=DAT)]
 				filtered_names = _filter_keys_by_rules(child_names, dat_rules, scenario)
 				dat_data = {}
 				for dat_name in filtered_names:
