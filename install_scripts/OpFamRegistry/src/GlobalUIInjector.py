@@ -192,7 +192,8 @@ class GlobalUIInjector:
 				else:
 					explicit.setdefault(idx, []).append(fam_name)
 
-			wildcards.sort()
+			import re
+			wildcards.sort(key=lambda s: [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', s)])
 
 			# All families sharing the same explicit idx get that position.
 			# The (sort_idx, is_builtin, name) key groups them before the
@@ -835,15 +836,23 @@ elif(source == 'input' and ({compatible_check})):
 		n = len(td.families) + len(self.owner.InstalledFams) + 1
 		cols = min(n, self.FAMILY_TABLE_COLS)
 		rows = (n + self.FAMILY_TABLE_COLS - 1) // self.FAMILY_TABLE_COLS
+		
 		family_table.par.tablecols = cols
-		family_table.par.tablerows = rows
+		if rows > 1:
+			family_table.par.tablerows = rows
 
-		families_op = self.menu_op.op('families')
-		if families_op:
-			families_op.par.h = 22*rows
-		familypanel = self.menu_op.op('familypanel')
-		if familypanel:
-			familypanel.par.h = 22*rows-2
+			families_op = self.menu_op.op('families')
+			if families_op:
+				families_op.par.h = 22*rows
+			familypanel = self.menu_op.op('familypanel')
+			if familypanel:
+				familypanel.par.h = 22*rows-2
+
+			
+			self.menu_op.par.winh.val = 633+22*(rows-1)
+			_expr = 'par(opparent(".",0)+"/panelh")-107-(par("familypanel/paneldisplay")*20)'
+			if rows > 1 and self.menu_op.op('nodepanel').par.h.mode == ParMode.EXPRESSION:
+				self.menu_op.op('nodepanel').par.h.expr = _expr+f"-{22*(rows-1)}"
 
 	def _setup_keyboard_nav(self):
 		"""Wire keyboardin1 to our nav callbacks and ensure arrow keys are in shortcuts."""
