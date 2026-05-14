@@ -4,6 +4,8 @@ TDFam uses table DATs for visual family configuration and JSON for portability. 
 
 Manifest fields are the preferred place for per-operator metadata. Config tables define family-level defaults and bulk presentation behavior.
 
+> **Note:** Changes to config tables take effect after reinitializing the extension or uncooking and recooking the `TDFam_create` component.
+
 ## Config Tables
 
 ### `settings`
