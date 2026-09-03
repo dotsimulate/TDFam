@@ -746,6 +746,10 @@ class OpFamRegistryExt:
 				op_type, op_name, op_label, op_version, fam_version,
 				op_fam, group, source, os_compatible
 		"""
+		# Manifest index is scoped to this call: rebuilt once here, reused by every
+		# get_operator_source() lookup below, dropped on exit. No staleness surface.
+		self.FileManager.invalidate_manifest_index(family_name)
+
 		installer = self.GetFamilyExt(family_name)
 		if not installer:
 			return {}
