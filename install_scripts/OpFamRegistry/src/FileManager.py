@@ -30,6 +30,7 @@ class FileManager:
 		self.ownerComp = ownerComp
 		self.registry = registry
 		self._search_words_cache = {}  # {family_name: {op_type_lower: [words]}}
+		self._manifest_index_cache = {}  # {family_name: {op_type_lower: [master_op, ...]}}
 
 	def refresh_cache(self, family_name, operators_folder):
 		"""
@@ -234,6 +235,53 @@ class FileManager:
 		except:
 			return None
 
+	def _get_manifest_index(self, family_name):
+		"""Return {op_type_lower: [master_op, ...]} for the family's embedded masters.
+
+		One pass over operators_comp, cached per family. Replaces the per-lookup deep
+		manifest scan in get_operator_source(), which parsed every manifest for every
+		lookup and was therefore O(masters^2) in JSON parses per cook.
+		"""
+		cached = self._manifest_index_cache.get(family_name)
+		if cached is not None:
+			return cached
+
+		index = {}
+		installer = self.registry.GetFamilyExt(family_name)
+		custom_ops = installer.operators_comp if installer else None
+		if custom_ops:
+			type_regex = re.compile(r'<TYPE:(.*)>')
+			for manifest in custom_ops.findChildren(tags=['<MANIFEST>'], maxDepth=2):
+				master = manifest.parent()
+				if not master or master == custom_ops:
+					continue
+				op_type = None
+				if opinfo_dat := manifest.op('OpInfo'):
+					try:
+						op_type = json.loads(opinfo_dat.text).get('op_type')
+					except Exception:
+						op_type = None
+				if op_type:
+					op_type = op_type.replace(family_name, '')
+				else:
+					for tag in manifest.tags:
+						if match := type_regex.match(tag):
+							op_type = match.group(1)
+							break
+				if not op_type:
+					continue
+				index.setdefault(op_type.strip().lower(), []).append(master)
+
+		self._manifest_index_cache[family_name] = index
+		return index
+
+	def invalidate_manifest_index(self, family_name=None):
+		"""Drop the cached manifest index for a family (or all families)."""
+		if family_name is None:
+			self._manifest_index_cache.clear()
+		else:
+			self._manifest_index_cache.pop(family_name, None)
+
 	def get_operator_source(self, family_name, lookup_name):
 		"""
 		Get operator source - embedded or file-based.
@@ -275,22 +323,10 @@ class FileManager:
 					return (version, trailing)
 				return max(ops, key=_score) if ops else None
 
-			# Fast tag lookup — may return multiple masters with the same op_type; pick highest-numbered.
-			manifested_ops = custom_ops.findChildren(tags=["<MANIFEST>", f'<FAM:{family_name}>', f'<TYPE:{lookup_name}>'], maxDepth=1)
+			# Indexed manifest lookup — built once per family, reused for every lookup
+			# in the cook. May return multiple masters with the same op_type; pick highest.
+			manifested_ops = self._get_manifest_index(family_name).get(lookup_name.strip().lower(), [])
 			manifested = _pick_highest(manifested_ops) if manifested_ops else None
-
-			if not manifested:
-				# Deep manifest scan — collect all matches, then pick highest-numbered.
-				manifest_candidates = []
-				for _manifest in custom_ops.findChildren(tags=["<MANIFEST>"], maxDepth=2):
-					if _opInfo := _manifest.op('OpInfo'):
-						import json
-						_opInfo_dict = json.loads(_opInfo.text)
-						if _opType := _opInfo_dict.get('op_type'):
-							_opType = _opType.replace(family_name, '')
-							if _opType == lookup_name:
-								manifest_candidates.append(_manifest.parent())
-				manifested = _pick_highest(manifest_candidates) if manifest_candidates else None
 
 			if not manifested:
 				# Name-based fallback — also covers masters named 'foo1' for op_type 'foo'.
